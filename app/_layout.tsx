@@ -55,6 +55,15 @@ export default function RootLayout() {
               animationDuration: 400,
             }}
           />
+          <Stack.Screen
+            name="scanner"
+            options={{
+              headerShown: false,
+              animation: 'slide_from_bottom',
+              animationDuration: 300,
+              presentation: 'modal',
+            }}
+          />
         </Stack>
         <StatusBar style="light" />
       </ThemeProvider>

@@ -122,20 +122,20 @@ export default function ScannerScreen() {
                     barcodeTypes: ['ean13', 'ean8', 'upc_a', 'upc_e'],
                 }}
                 onBarcodeScanned={scanned ? undefined : handleBarcodeScanned}
-            >
-                {/* Scanner Frame */}
-                <View style={styles.scannerOverlay}>
-                    <View style={styles.scannerFrame}>
-                        <View style={[styles.corner, styles.topLeft]} />
-                        <View style={[styles.corner, styles.topRight]} />
-                        <View style={[styles.corner, styles.bottomLeft]} />
-                        <View style={[styles.corner, styles.bottomRight]} />
-                    </View>
-                    <Text style={styles.scannerHint}>
-                        Inquadra il codice a barre del volume
-                    </Text>
+            />
+
+            {/* Scanner Frame Overlay - Positioned absolutely on top of camera */}
+            <View style={styles.scannerOverlay} pointerEvents="none">
+                <View style={styles.scannerFrame}>
+                    <View style={[styles.corner, styles.topLeft]} />
+                    <View style={[styles.corner, styles.topRight]} />
+                    <View style={[styles.corner, styles.bottomLeft]} />
+                    <View style={[styles.corner, styles.bottomRight]} />
                 </View>
-            </CameraView>
+                <Text style={styles.scannerHint}>
+                    Inquadra il codice a barre del volume
+                </Text>
+            </View>
 
             {/* Loading Overlay */}
             {loading && (
@@ -218,10 +218,10 @@ const styles = StyleSheet.create({
         flex: 1,
     },
     scannerOverlay: {
-        flex: 1,
+        ...StyleSheet.absoluteFillObject,
         justifyContent: 'center',
         alignItems: 'center',
-        backgroundColor: 'rgba(0,0,0,0.5)',
+        backgroundColor: 'rgba(0,0,0,0.3)',
     },
     scannerFrame: {
         width: 280,

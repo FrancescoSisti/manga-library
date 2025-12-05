@@ -196,15 +196,6 @@ export default function HomeScreen() {
           </View>
         }
       />
-
-      {/* Scanner FAB */}
-      <TouchableOpacity
-        style={styles.fab}
-        onPress={() => router.push('/scanner')}
-        activeOpacity={0.8}
-      >
-        <Ionicons name="barcode-outline" size={26} color="#fff" />
-      </TouchableOpacity>
     </View>
   );
 }

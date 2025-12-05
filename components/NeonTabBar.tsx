@@ -1,15 +1,15 @@
 import { Colors } from '@/constants/Colors';
 import { Ionicons } from '@expo/vector-icons';
 import { BottomTabBarProps } from '@react-navigation/bottom-tabs';
-import { PlatformPressable, Text } from '@react-navigation/elements';
-import { useLinkBuilder } from '@react-navigation/native';
 import { BlurView } from 'expo-blur';
 import * as Haptics from 'expo-haptics';
+import { useRouter } from 'expo-router';
 import { useEffect } from 'react';
-import { Platform, StyleSheet, View } from 'react-native';
+import { Platform, StyleSheet, TouchableOpacity, View } from 'react-native';
+import { Text } from 'react-native-paper';
 import Animated, { useAnimatedStyle, useSharedValue, withSpring } from 'react-native-reanimated';
 
-// Icon mapping
+// Icon mapping for tabs
 const icons: Record<string, keyof typeof Ionicons.glyphMap> = {
     index: 'home',
     search: 'search',
@@ -20,91 +20,100 @@ function TabBarIcon({ name, focused, color }: { name: keyof typeof Ionicons.glyp
     const scale = useSharedValue(1);
 
     useEffect(() => {
-        scale.value = withSpring(focused ? 1.2 : 1, { damping: 10, stiffness: 100 });
+        scale.value = withSpring(focused ? 1.15 : 1, { damping: 10, stiffness: 100 });
     }, [focused]);
 
-    const animatedStyle = useAnimatedStyle(() => {
-        return {
-            transform: [{ scale: scale.value }],
-        };
-    });
+    const animatedStyle = useAnimatedStyle(() => ({
+        transform: [{ scale: scale.value }],
+    }));
 
     return (
         <Animated.View style={animatedStyle}>
-            <Ionicons name={focused ? name : `${name}-outline` as any} size={24} color={color} />
+            <Ionicons name={focused ? name : `${name}-outline` as any} size={22} color={color} />
         </Animated.View>
     );
 }
 
 export function NeonTabBar({ state, descriptors, navigation }: BottomTabBarProps) {
-    const { buildHref } = useLinkBuilder();
+    const router = useRouter();
+
+    const handleScannerPress = () => {
+        if (Platform.OS !== 'web') {
+            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+        }
+        router.push('/scanner');
+    };
+
+    const handleTabPress = (routeName: string, routeKey: string, isFocused: boolean) => {
+        if (Platform.OS !== 'web') {
+            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+        }
+
+        const event = navigation.emit({
+            type: 'tabPress',
+            target: routeKey,
+            canPreventDefault: true,
+        });
+
+        if (!isFocused && !event.defaultPrevented) {
+            navigation.navigate(routeName);
+        }
+    };
 
     return (
         <View style={styles.container}>
-            {/* Solid dark background for opacity */}
-            <View style={[StyleSheet.absoluteFillObject, { backgroundColor: 'rgba(9, 9, 11, 0.92)' }]} />
-            <BlurView
-                intensity={100}
-                tint="dark"
-                style={StyleSheet.absoluteFillObject}
-            />
+            {/* Dark background */}
+            <View style={styles.background} />
+            <BlurView intensity={80} tint="dark" style={StyleSheet.absoluteFillObject} />
 
             <View style={styles.content}>
-                {state.routes.map((route, index) => {
-                    const { options } = descriptors[route.key];
-                    const label =
-                        options.tabBarLabel !== undefined
-                            ? options.tabBarLabel
-                            : options.title !== undefined
-                                ? options.title
-                                : route.name;
+                {/* Home Tab */}
+                <TouchableOpacity
+                    style={styles.tab}
+                    onPress={() => handleTabPress('index', state.routes[0].key, state.index === 0)}
+                >
+                    <TabBarIcon
+                        name="home"
+                        focused={state.index === 0}
+                        color={state.index === 0 ? Colors.neon.primary : 'rgba(255,255,255,0.5)'}
+                    />
+                    <Text style={[styles.tabLabel, state.index === 0 && styles.tabLabelActive]}>Home</Text>
+                </TouchableOpacity>
 
-                    const isFocused = state.index === index;
+                {/* Search Tab */}
+                <TouchableOpacity
+                    style={styles.tab}
+                    onPress={() => handleTabPress('search', state.routes[1].key, state.index === 1)}
+                >
+                    <TabBarIcon
+                        name="search"
+                        focused={state.index === 1}
+                        color={state.index === 1 ? Colors.neon.primary : 'rgba(255,255,255,0.5)'}
+                    />
+                    <Text style={[styles.tabLabel, state.index === 1 && styles.tabLabelActive]}>Search</Text>
+                </TouchableOpacity>
 
-                    const onPress = () => {
-                        if (Platform.OS !== 'web') {
-                            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                        }
+                {/* Scanner Button - Center */}
+                <TouchableOpacity
+                    style={styles.scannerBtn}
+                    onPress={handleScannerPress}
+                    activeOpacity={0.8}
+                >
+                    <Ionicons name="scan-outline" size={26} color="#fff" />
+                </TouchableOpacity>
 
-                        const event = navigation.emit({
-                            type: 'tabPress',
-                            target: route.key,
-                            canPreventDefault: true,
-                        });
-
-                        if (!isFocused && !event.defaultPrevented) {
-                            navigation.navigate(route.name, route.params);
-                        }
-                    };
-
-                    const onLongPress = () => {
-                        navigation.emit({
-                            type: 'tabLongPress',
-                            target: route.key,
-                        });
-                    };
-
-                    const color = isFocused ? Colors.neon.primary : 'rgba(255,255,255,0.5)';
-                    const iconName = icons[route.name] || 'help';
-
-                    return (
-                        <PlatformPressable
-                            key={route.key}
-                            href={buildHref(route.name, route.params)}
-                            accessibilityState={isFocused ? { selected: true } : {}}
-                            accessibilityLabel={options.tabBarAccessibilityLabel}
-                            testID={options.tabBarButtonTestID}
-                            onPress={onPress}
-                            onLongPress={onLongPress}
-                            style={styles.item}
-                        >
-                            <TabBarIcon name={iconName} focused={isFocused} color={color} />
-                            <Text style={{ color, fontSize: 10, marginTop: 4, fontWeight: isFocused ? '600' : '400' }}>
-                                {typeof label === 'string' ? label : ''}
-                            </Text>
-                        </PlatformPressable>
-                    );
-                })}
+                {/* Wishlist Tab */}
+                <TouchableOpacity
+                    style={styles.tab}
+                    onPress={() => handleTabPress('wishlist', state.routes[2].key, state.index === 2)}
+                >
+                    <TabBarIcon
+                        name="heart"
+                        focused={state.index === 2}
+                        color={state.index === 2 ? Colors.neon.primary : 'rgba(255,255,255,0.5)'}
+                    />
+                    <Text style={[styles.tabLabel, state.index === 2 && styles.tabLabelActive]}>Wishlist</Text>
+                </TouchableOpacity>
             </View>
         </View>
     );
@@ -114,28 +123,57 @@ const styles = StyleSheet.create({
     container: {
         position: 'absolute',
         bottom: 20,
-        left: 20,
-        right: 20,
-        borderRadius: 30,
+        left: 16,
+        right: 16,
+        height: 70,
+        borderRadius: 35,
         overflow: 'hidden',
         borderWidth: 1,
         borderColor: 'rgba(255,255,255,0.1)',
         shadowColor: '#000',
-        shadowOffset: { width: 0, height: 10 },
-        shadowOpacity: 0.5,
-        shadowRadius: 10,
-        elevation: 10, // Android shadow
+        shadowOffset: { width: 0, height: 8 },
+        shadowOpacity: 0.4,
+        shadowRadius: 12,
+        elevation: 10,
+    },
+    background: {
+        ...StyleSheet.absoluteFillObject,
+        backgroundColor: 'rgba(12, 12, 16, 0.95)',
     },
     content: {
+        flex: 1,
         flexDirection: 'row',
         alignItems: 'center',
         justifyContent: 'space-around',
-        paddingVertical: 15,
+        paddingHorizontal: 10,
     },
-    item: {
+    tab: {
         flex: 1,
         alignItems: 'center',
         justifyContent: 'center',
-        padding: 5,
-    }
+        paddingVertical: 8,
+    },
+    tabLabel: {
+        fontSize: 10,
+        marginTop: 4,
+        color: 'rgba(255,255,255,0.5)',
+    },
+    tabLabelActive: {
+        color: Colors.neon.primary,
+        fontWeight: '600',
+    },
+    scannerBtn: {
+        width: 56,
+        height: 56,
+        borderRadius: 28,
+        backgroundColor: Colors.neon.primary,
+        justifyContent: 'center',
+        alignItems: 'center',
+        marginHorizontal: 8,
+        shadowColor: Colors.neon.primary,
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.5,
+        shadowRadius: 10,
+        elevation: 8,
+    },
 });
