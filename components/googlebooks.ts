@@ -207,3 +207,68 @@ export async function getVolumesWithCovers(
         return [];
     }
 }
+
+export interface ISBNLookupResult {
+    found: boolean;
+    seriesTitle?: string;
+    volumeNumber?: number;
+    fullTitle?: string;
+    coverUrl?: string;
+    authors?: string[];
+    description?: string;
+}
+
+/**
+ * Looks up a manga volume by ISBN (barcode)
+ * Returns the series name and volume number if found
+ */
+export async function lookupByISBN(isbn: string): Promise<ISBNLookupResult> {
+    try {
+        const params: any = {
+            q: `isbn:${isbn}`,
+            maxResults: 1,
+        };
+
+        if (API_KEY) {
+            params.key = API_KEY;
+        }
+
+        const response = await axios.get(GOOGLE_BOOKS_API, { params });
+
+        if (!response.data.items || response.data.items.length === 0) {
+            return { found: false };
+        }
+
+        const book = response.data.items[0].volumeInfo;
+        const title = book.title || '';
+        const volumeNumber = extractVolumeNumber(title);
+
+        // Try to extract series name (remove volume info)
+        let seriesTitle = title
+            .replace(/,?\s*Vol\.?\s*\d+/i, '')
+            .replace(/,?\s*Volume\s*\d+/i, '')
+            .replace(/\s*\d+$/, '')
+            .trim();
+
+        // Get cover
+        let coverUrl = null;
+        if (book.imageLinks?.thumbnail) {
+            coverUrl = book.imageLinks.thumbnail
+                .replace('zoom=1', 'zoom=2')
+                .replace('http://', 'https://');
+        }
+
+        return {
+            found: true,
+            seriesTitle,
+            volumeNumber: volumeNumber || undefined,
+            fullTitle: title,
+            coverUrl,
+            authors: book.authors,
+            description: book.description,
+        };
+    } catch (error) {
+        console.error('ISBN lookup error:', error);
+        return { found: false };
+    }
+}

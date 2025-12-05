@@ -12,6 +12,7 @@ export const initDatabase = () => {
       totalVolumes INTEGER,
       status TEXT,
       coverImage TEXT,
+      description TEXT,
       createdAt DATETIME DEFAULT CURRENT_TIMESTAMP
     );
     CREATE TABLE IF NOT EXISTS Volumes (
@@ -23,6 +24,13 @@ export const initDatabase = () => {
       FOREIGN KEY (seriesId) REFERENCES Series (id) ON DELETE CASCADE
     );
   `);
+
+    // Add description column if it doesn't exist (for existing databases)
+    try {
+        db.execSync('ALTER TABLE Series ADD COLUMN description TEXT');
+    } catch (e) {
+        // Column already exists, ignore
+    }
 };
 
 export interface Series {
@@ -32,6 +40,7 @@ export interface Series {
     totalVolumes: number | null;
     status: string;
     coverImage: string;
+    description?: string;
     createdAt?: string;
 }
 
@@ -43,10 +52,10 @@ export interface Volume {
     isRead: number;
 }
 
-export const addSeries = (title: string, author: string, totalVolumes: number | null, status: string, coverImage: string) => {
+export const addSeries = (title: string, author: string, totalVolumes: number | null, status: string, coverImage: string, description?: string) => {
     return db.runSync(
-        'INSERT INTO Series (title, author, totalVolumes, status, coverImage) VALUES (?, ?, ?, ?, ?)',
-        title, author, totalVolumes, status, coverImage
+        'INSERT INTO Series (title, author, totalVolumes, status, coverImage, description) VALUES (?, ?, ?, ?, ?, ?)',
+        title, author, totalVolumes, status, coverImage, description || null
     );
 };
 
@@ -64,6 +73,13 @@ export const deleteSeries = (id: number) => {
 
 export const updateSeriesVolumes = (id: number, totalVolumes: number) => {
     return db.runSync('UPDATE Series SET totalVolumes = ? WHERE id = ?', totalVolumes, id);
+};
+
+export const updateSeriesInfo = (id: number, totalVolumes: number | null, description: string | null) => {
+    return db.runSync(
+        'UPDATE Series SET totalVolumes = ?, description = ? WHERE id = ?',
+        totalVolumes, description, id
+    );
 };
 
 export const getVolumes = (seriesId: number): Volume[] => {

@@ -196,6 +196,15 @@ export default function HomeScreen() {
           </View>
         }
       />
+
+      {/* Scanner FAB */}
+      <TouchableOpacity
+        style={styles.fab}
+        onPress={() => router.push('/scanner')}
+        activeOpacity={0.8}
+      >
+        <Ionicons name="barcode-outline" size={26} color="#fff" />
+      </TouchableOpacity>
     </View>
   );
 }
@@ -420,5 +429,21 @@ const styles = StyleSheet.create({
     color: '#888',
     fontSize: 11,
     marginTop: 4,
+  },
+  fab: {
+    position: 'absolute',
+    bottom: 100,
+    right: 20,
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: Colors.neon.primary,
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: Colors.neon.primary,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.4,
+    shadowRadius: 8,
+    elevation: 8,
   },
 });

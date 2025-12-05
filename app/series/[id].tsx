@@ -1,8 +1,10 @@
-import { getSeriesById, getVolumes, Series, toggleVolume, updateSeriesVolumes, Volume } from '@/components/database';
-import { getVolumesWithCovers, VolumeInfo } from '@/components/googlebooks';
-import { useLocalSearchParams, useNavigation } from 'expo-router';
+import { deleteSeries, getSeriesById, getVolumes, Series, toggleVolume, updateSeriesInfo, updateSeriesVolumes, Volume } from '@/components/database';
+import { getBestVolumeCount, getVolumesWithCovers, VolumeInfo } from '@/components/googlebooks';
+import { Toast } from '@/components/Toast';
+import axios from 'axios';
+import { useLocalSearchParams, useNavigation, useRouter } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
-import { ActivityIndicator, Image, Modal, Pressable, ScrollView, StyleSheet, TextInput, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Alert, Image, Modal, Pressable, ScrollView, StyleSheet, TextInput, TouchableOpacity, View } from 'react-native';
 import { ProgressBar, Text, useTheme } from 'react-native-paper';
 
 import { Colors } from '@/constants/Colors';
@@ -13,6 +15,7 @@ export default function SeriesDetailScreen() {
     const { id } = useLocalSearchParams();
     const theme = useTheme();
     const navigation = useNavigation();
+    const router = useRouter();
     const [series, setSeries] = useState<Series | null>(null);
     const [volumes, setVolumes] = useState<Volume[]>([]);
     const [volumeCovers, setVolumeCovers] = useState<VolumeInfo[]>([]);
@@ -20,6 +23,13 @@ export default function SeriesDetailScreen() {
     const [ownedCount, setOwnedCount] = useState(0);
     const [editModal, setEditModal] = useState(false);
     const [newVolumeCount, setNewVolumeCount] = useState('');
+    const [isRefreshing, setIsRefreshing] = useState(false);
+    const [expandedSynopsis, setExpandedSynopsis] = useState(false);
+    const [toast, setToast] = useState<{ visible: boolean; message: string; type: 'success' | 'error' | 'info' }>({ visible: false, message: '', type: 'success' });
+
+    const showToast = (message: string, type: 'success' | 'error' | 'info' = 'success') => {
+        setToast({ visible: true, message, type });
+    };
 
     const loadData = useCallback(() => {
         const seriesId = Array.isArray(id) ? Number(id[0]) : Number(id);
@@ -76,6 +86,60 @@ export default function SeriesDetailScreen() {
         }
     };
 
+    // Refresh manga info from Jikan API
+    const handleRefreshInfo = async () => {
+        if (!series) return;
+
+        setIsRefreshing(true);
+        try {
+            // Search for the manga on Jikan
+            const response = await axios.get(
+                `https://api.jikan.moe/v4/manga?q=${encodeURIComponent(series.title)}&limit=1`
+            );
+
+            const manga = response.data.data?.[0];
+            if (manga) {
+                // Get volume count from Google Books if Jikan doesn't have it
+                const volumes = await getBestVolumeCount(manga.title, manga.volumes);
+
+                // Update the database
+                updateSeriesInfo(series.id, volumes, manga.synopsis || null);
+
+                // Reload data
+                loadData();
+                showToast('Informazioni aggiornate!', 'success');
+            } else {
+                showToast('Manga non trovato', 'error');
+            }
+        } catch (error) {
+            console.error(error);
+            showToast('Errore di aggiornamento', 'error');
+        } finally {
+            setIsRefreshing(false);
+        }
+    };
+
+    // Delete series
+    const handleDelete = () => {
+        Alert.alert(
+            'Elimina Serie',
+            `Sei sicuro di voler eliminare "${series?.title}"? Questa azione non può essere annullata.`,
+            [
+                { text: 'Annulla', style: 'cancel' },
+                {
+                    text: 'Elimina',
+                    style: 'destructive',
+                    onPress: () => {
+                        if (series) {
+                            deleteSeries(series.id);
+                            router.back();
+                        }
+                    },
+                },
+            ]
+        );
+    };
+
     if (!series) {
         return <View style={styles.container}><Text>Loading...</Text></View>;
     }
@@ -87,184 +151,250 @@ export default function SeriesDetailScreen() {
     const isComplete = ownedCount === totalVols;
 
     return (
-        <ScrollView style={[styles.container, { backgroundColor: theme.colors.background }]}>
-            {/* Edit Modal */}
-            <Modal
-                visible={editModal}
-                animationType="fade"
-                transparent={true}
-                onRequestClose={() => setEditModal(false)}
-            >
-                <View style={styles.modalOverlay}>
-                    <Pressable style={styles.modalBackdrop} onPress={() => setEditModal(false)} />
-                    <View style={styles.modalBox}>
-                        <TouchableOpacity style={styles.closeBtn} onPress={() => setEditModal(false)}>
-                            <Ionicons name="close" size={22} color="#888" />
+        <>
+            <ScrollView style={[styles.container, { backgroundColor: theme.colors.background }]}>
+                {/* Edit Modal */}
+                <Modal
+                    visible={editModal}
+                    animationType="fade"
+                    transparent={true}
+                    onRequestClose={() => setEditModal(false)}
+                >
+                    <View style={styles.modalOverlay}>
+                        <Pressable style={styles.modalBackdrop} onPress={() => setEditModal(false)} />
+                        <View style={styles.modalBox}>
+                            <TouchableOpacity style={styles.closeBtn} onPress={() => setEditModal(false)}>
+                                <Ionicons name="close" size={22} color="#888" />
+                            </TouchableOpacity>
+
+                            <Ionicons name="book" size={40} color={Colors.neon.accent} />
+                            <Text variant="titleLarge" style={styles.modalTitle}>Modifica Volumi</Text>
+                            <Text variant="bodyMedium" style={styles.modalSubtitle}>
+                                Inserisci il numero totale di volumi
+                            </Text>
+
+                            <TextInput
+                                style={styles.volumeInput}
+                                value={newVolumeCount}
+                                onChangeText={setNewVolumeCount}
+                                placeholder={String(series.totalVolumes || 20)}
+                                placeholderTextColor="#555"
+                                keyboardType="number-pad"
+                                cursorColor={Colors.neon.primary}
+                            />
+
+                            <TouchableOpacity style={styles.saveBtn} onPress={handleUpdateVolumes}>
+                                <Text style={styles.saveBtnText}>Salva</Text>
+                            </TouchableOpacity>
+                        </View>
+                    </View>
+                </Modal>
+
+                {/* Floating Action Bar */}
+                <View style={styles.floatingBar}>
+                    <TouchableOpacity style={styles.floatingBtn} onPress={() => router.back()}>
+                        <Ionicons name="arrow-back" size={24} color="#fff" />
+                    </TouchableOpacity>
+
+                    <View style={styles.floatingActions}>
+                        <TouchableOpacity
+                            style={styles.floatingBtn}
+                            onPress={() => {
+                                setNewVolumeCount(String(series.totalVolumes || 20));
+                                setEditModal(true);
+                            }}
+                            disabled={isRefreshing}
+                        >
+                            <Ionicons name="pencil" size={20} color={Colors.neon.accent} />
                         </TouchableOpacity>
-
-                        <Ionicons name="book" size={40} color={Colors.neon.accent} />
-                        <Text variant="titleLarge" style={styles.modalTitle}>Modifica Volumi</Text>
-                        <Text variant="bodyMedium" style={styles.modalSubtitle}>
-                            Inserisci il numero totale di volumi
-                        </Text>
-
-                        <TextInput
-                            style={styles.volumeInput}
-                            value={newVolumeCount}
-                            onChangeText={setNewVolumeCount}
-                            placeholder={String(series.totalVolumes || 20)}
-                            placeholderTextColor="#555"
-                            keyboardType="number-pad"
-                            cursorColor={Colors.neon.primary}
-                        />
-
-                        <TouchableOpacity style={styles.saveBtn} onPress={handleUpdateVolumes}>
-                            <Text style={styles.saveBtnText}>Salva</Text>
+                        <TouchableOpacity style={styles.floatingBtn} onPress={handleRefreshInfo} disabled={isRefreshing}>
+                            {isRefreshing ? (
+                                <ActivityIndicator size="small" color={Colors.neon.primary} />
+                            ) : (
+                                <Ionicons name="refresh" size={20} color={Colors.neon.primary} />
+                            )}
+                        </TouchableOpacity>
+                        <TouchableOpacity style={styles.floatingBtn} onPress={handleDelete} disabled={isRefreshing}>
+                            <Ionicons name="trash-outline" size={20} color="#EF4444" />
                         </TouchableOpacity>
                     </View>
                 </View>
-            </Modal>
 
-            <View style={styles.header}>
-                <Image source={{ uri: series.coverImage }} style={styles.banner} blurRadius={15} />
-                <LinearGradient
-                    colors={['transparent', 'rgba(0,0,0,0.6)', theme.colors.background]}
-                    locations={[0, 0.5, 1]}
-                    style={styles.headerGradient}
-                />
-                <View style={styles.headerContent}>
-                    {/* Cover with glow effect */}
-                    <View style={styles.posterWrapper}>
-                        <View style={styles.posterGlow} />
-                        <Image source={{ uri: series.coverImage }} style={styles.poster} resizeMode="cover" />
-                    </View>
-                    <View style={styles.headerText}>
-                        <Text variant="headlineSmall" style={styles.title} numberOfLines={2}>{series.title}</Text>
-                        <Text variant="titleMedium" style={{ color: Colors.neon.accent }}>{series.author}</Text>
-                        <View style={styles.badgeContainer}>
-                            <Text variant="labelSmall" style={styles.badge}>{series.status}</Text>
-                            <Text variant="labelSmall" style={[styles.badge, { backgroundColor: Colors.neon.secondary }]}>
-                                {ownedCount}/{series.totalVolumes || '?'}
-                            </Text>
-                            {isComplete && (
-                                <View style={[styles.badge, { backgroundColor: '#22C55E', flexDirection: 'row', alignItems: 'center', gap: 3 }]}>
-                                    <Ionicons name="checkmark-circle" size={12} color="#fff" />
-                                    <Text variant="labelSmall" style={{ color: '#fff' }}>Completa</Text>
-                                </View>
-                            )}
+                <View style={styles.header}>
+                    <Image source={{ uri: series.coverImage }} style={styles.banner} blurRadius={15} />
+                    <LinearGradient
+                        colors={['transparent', 'rgba(0,0,0,0.6)', theme.colors.background]}
+                        locations={[0, 0.5, 1]}
+                        style={styles.headerGradient}
+                    />
+                    <View style={styles.headerContent}>
+                        {/* Cover with glow effect */}
+                        <View style={styles.posterWrapper}>
+                            <View style={styles.posterGlow} />
+                            <Image source={{ uri: series.coverImage }} style={styles.poster} resizeMode="cover" />
+                        </View>
+                        <View style={styles.headerText}>
+                            <Text variant="headlineSmall" style={styles.title} numberOfLines={2}>{series.title}</Text>
+                            <Text variant="titleMedium" style={{ color: Colors.neon.accent }}>{series.author}</Text>
+                            <View style={styles.badgeContainer}>
+                                <Text variant="labelSmall" style={styles.badge}>{series.status}</Text>
+                                <Text variant="labelSmall" style={[styles.badge, { backgroundColor: Colors.neon.secondary }]}>
+                                    {ownedCount}/{series.totalVolumes || '?'}
+                                </Text>
+                                {isComplete && (
+                                    <View style={[styles.badge, { backgroundColor: '#22C55E', flexDirection: 'row', alignItems: 'center', gap: 3 }]}>
+                                        <Ionicons name="checkmark-circle" size={12} color="#fff" />
+                                        <Text variant="labelSmall" style={{ color: '#fff' }}>Completa</Text>
+                                    </View>
+                                )}
+                            </View>
                         </View>
                     </View>
                 </View>
-            </View>
 
-            <View style={styles.content}>
-                <View style={styles.progressContainer}>
-                    <View style={styles.progressHeader}>
-                        <Text variant="labelMedium" style={{ color: '#aaa' }}>Collection Progress</Text>
-                        <Text variant="labelMedium" style={{ color: Colors.neon.primary, fontWeight: 'bold' }}>
-                            {Math.round(progress * 100)}%
-                        </Text>
+                <View style={styles.content}>
+                    <View style={styles.progressContainer}>
+                        <View style={styles.progressHeader}>
+                            <Text variant="labelMedium" style={{ color: '#aaa' }}>Collection Progress</Text>
+                            <Text variant="labelMedium" style={{ color: Colors.neon.primary, fontWeight: 'bold' }}>
+                                {Math.round(progress * 100)}%
+                            </Text>
+                        </View>
+                        <ProgressBar
+                            progress={progress}
+                            color={isComplete ? '#22C55E' : Colors.neon.primary}
+                            style={styles.progress}
+                        />
                     </View>
-                    <ProgressBar
-                        progress={progress}
-                        color={isComplete ? '#22C55E' : Colors.neon.primary}
-                        style={styles.progress}
-                    />
-                </View>
 
-                {/* Action Buttons */}
-                <View style={styles.actionButtons}>
-                    <TouchableOpacity
-                        style={[styles.actionBtn, { backgroundColor: 'rgba(34, 197, 94, 0.15)', borderColor: '#22C55E' }]}
-                        onPress={() => handleMarkAll(true)}
-                    >
-                        <Ionicons name="checkmark-done" size={18} color="#22C55E" />
-                        <Text style={[styles.actionBtnText, { color: '#22C55E' }]}>Segna tutti</Text>
-                    </TouchableOpacity>
+                    {/* Synopsis Section */}
+                    {series.description && (
+                        <View style={styles.synopsisContainer}>
+                            <Text variant="titleMedium" style={styles.sectionTitle}>Synopsis</Text>
+                            <Text style={styles.synopsisText} numberOfLines={expandedSynopsis ? undefined : 4}>
+                                {series.description}
+                            </Text>
+                            <TouchableOpacity onPress={() => setExpandedSynopsis(!expandedSynopsis)} style={styles.readMoreBtn}>
+                                <Text style={styles.readMoreText}>
+                                    {expandedSynopsis ? 'Leggi meno' : 'Leggi di più'}
+                                </Text>
+                                <Ionicons name={expandedSynopsis ? 'chevron-up' : 'chevron-down'} size={16} color={Colors.neon.primary} />
+                            </TouchableOpacity>
+                        </View>
+                    )}
 
-                    <TouchableOpacity
-                        style={[styles.actionBtn, { backgroundColor: 'rgba(239, 68, 68, 0.15)', borderColor: '#EF4444' }]}
-                        onPress={() => handleMarkAll(false)}
-                    >
-                        <Ionicons name="close" size={18} color="#EF4444" />
-                        <Text style={[styles.actionBtnText, { color: '#EF4444' }]}>Deseleziona</Text>
-                    </TouchableOpacity>
+                    {/* Action Buttons */}
+                    <View style={styles.actionButtons}>
+                        <TouchableOpacity
+                            style={[styles.actionBtn, { backgroundColor: 'rgba(34, 197, 94, 0.15)', borderColor: '#22C55E' }]}
+                            onPress={() => handleMarkAll(true)}
+                        >
+                            <Ionicons name="checkmark-done" size={18} color="#22C55E" />
+                            <Text style={[styles.actionBtnText, { color: '#22C55E' }]}>Segna tutti</Text>
+                        </TouchableOpacity>
 
-                    <TouchableOpacity
-                        style={[styles.actionBtn, { backgroundColor: 'rgba(34, 211, 238, 0.15)', borderColor: Colors.neon.accent }]}
-                        onPress={() => {
-                            setNewVolumeCount(String(series.totalVolumes || 20));
-                            setEditModal(true);
-                        }}
-                    >
-                        <Ionicons name="pencil" size={16} color={Colors.neon.accent} />
-                        <Text style={[styles.actionBtnText, { color: Colors.neon.accent }]}>Modifica</Text>
-                    </TouchableOpacity>
-                </View>
-
-                <Text variant="titleMedium" style={styles.sectionTitle}>Volumi</Text>
-
-                {loadingCovers && (
-                    <View style={styles.loadingContainer}>
-                        <ActivityIndicator size="small" color={Colors.neon.primary} />
-                        <Text style={styles.loadingText}>Caricamento cover...</Text>
+                        <TouchableOpacity
+                            style={[styles.actionBtn, { backgroundColor: 'rgba(239, 68, 68, 0.15)', borderColor: '#EF4444' }]}
+                            onPress={() => handleMarkAll(false)}
+                        >
+                            <Ionicons name="close" size={18} color="#EF4444" />
+                            <Text style={[styles.actionBtnText, { color: '#EF4444' }]}>Deseleziona</Text>
+                        </TouchableOpacity>
                     </View>
-                )}
 
-                <View style={styles.grid}>
-                    {grid.map(volNum => {
-                        const isOwned = volumes.find(v => v.volumeNumber === volNum && v.isOwned === 1);
-                        const coverInfo = volumeCovers.find(c => c.volumeNumber === volNum);
+                    <Text variant="titleMedium" style={styles.sectionTitle}>Volumi</Text>
 
-                        return (
-                            <TouchableOpacity
-                                key={volNum}
-                                activeOpacity={0.7}
-                                style={[
-                                    styles.volumeCard,
-                                    isOwned && styles.volumeCardOwned,
-                                ]}
-                                onPress={() => handleToggleVolume(volNum)}
-                            >
-                                {coverInfo?.coverUrl ? (
-                                    <Image
-                                        source={{ uri: coverInfo.coverUrl }}
-                                        style={styles.volumeCover}
-                                        resizeMode="cover"
-                                    />
-                                ) : (
-                                    <View style={[styles.volumeCover, styles.volumePlaceholder]}>
-                                        <Text style={styles.volumePlaceholderText}>{volNum}</Text>
-                                    </View>
-                                )}
+                    {loadingCovers && (
+                        <View style={styles.loadingContainer}>
+                            <ActivityIndicator size="small" color={Colors.neon.primary} />
+                            <Text style={styles.loadingText}>Caricamento cover...</Text>
+                        </View>
+                    )}
 
-                                <LinearGradient
-                                    colors={['transparent', 'rgba(0,0,0,0.9)']}
-                                    style={styles.volumeGradient}
-                                />
+                    <View style={styles.grid}>
+                        {grid.map(volNum => {
+                            const isOwned = volumes.find(v => v.volumeNumber === volNum && v.isOwned === 1);
+                            const coverInfo = volumeCovers.find(c => c.volumeNumber === volNum);
 
-                                <View style={styles.volumeInfo}>
-                                    <Text style={styles.volumeNumber}>Vol. {volNum}</Text>
-                                    {isOwned && (
-                                        <View style={styles.ownedBadge}>
-                                            <Ionicons name="checkmark" size={10} color="#fff" />
+                            return (
+                                <TouchableOpacity
+                                    key={volNum}
+                                    activeOpacity={0.7}
+                                    style={[
+                                        styles.volumeCard,
+                                        isOwned && styles.volumeCardOwned,
+                                    ]}
+                                    onPress={() => handleToggleVolume(volNum)}
+                                >
+                                    {coverInfo?.coverUrl ? (
+                                        <Image
+                                            source={{ uri: coverInfo.coverUrl }}
+                                            style={styles.volumeCover}
+                                            resizeMode="cover"
+                                        />
+                                    ) : (
+                                        <View style={[styles.volumeCover, styles.volumePlaceholder]}>
+                                            <Text style={styles.volumePlaceholderText}>{volNum}</Text>
                                         </View>
                                     )}
-                                </View>
 
-                                {isOwned && <View style={styles.volumeGlow} />}
-                            </TouchableOpacity>
-                        )
-                    })}
+                                    <LinearGradient
+                                        colors={['transparent', 'rgba(0,0,0,0.9)']}
+                                        style={styles.volumeGradient}
+                                    />
+
+                                    <View style={styles.volumeInfo}>
+                                        <Text style={styles.volumeNumber}>Vol. {volNum}</Text>
+                                        {isOwned && (
+                                            <View style={styles.ownedBadge}>
+                                                <Ionicons name="checkmark" size={10} color="#fff" />
+                                            </View>
+                                        )}
+                                    </View>
+
+                                    {isOwned && <View style={styles.volumeGlow} />}
+                                </TouchableOpacity>
+                            )
+                        })}
+                    </View>
                 </View>
-            </View>
-        </ScrollView>
+            </ScrollView>
+
+            <Toast
+                visible={toast.visible}
+                message={toast.message}
+                type={toast.type}
+                onHide={() => setToast({ ...toast, visible: false })}
+            />
+        </>
     );
 }
 
 const styles = StyleSheet.create({
     container: {
         flex: 1,
+    },
+    floatingBar: {
+        position: 'absolute',
+        top: 50,
+        left: 16,
+        right: 16,
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        zIndex: 100,
+    },
+    floatingBtn: {
+        width: 40,
+        height: 40,
+        borderRadius: 20,
+        backgroundColor: 'rgba(0,0,0,0.5)',
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+    floatingActions: {
+        flexDirection: 'row',
+        gap: 10,
     },
     header: {
         height: 380,
@@ -350,6 +480,31 @@ const styles = StyleSheet.create({
         height: 10,
         borderRadius: 5,
         backgroundColor: 'rgba(255,255,255,0.1)',
+    },
+    synopsisContainer: {
+        marginBottom: 20,
+        backgroundColor: 'rgba(255,255,255,0.03)',
+        padding: 16,
+        borderRadius: 14,
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.05)',
+    },
+    synopsisText: {
+        color: '#aaa',
+        fontSize: 14,
+        lineHeight: 22,
+    },
+    readMoreBtn: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        marginTop: 10,
+        gap: 4,
+    },
+    readMoreText: {
+        color: Colors.neon.primary,
+        fontSize: 13,
+        fontWeight: '600',
     },
     actionButtons: {
         flexDirection: 'row',

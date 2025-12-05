@@ -104,7 +104,7 @@ export default function SearchScreen() {
             showToast('Fetching volume info...', 'info');
             const volumes = await getBestVolumeCount(manga.title, manga.volumes);
 
-            await addSeries(manga.title, author, volumes, status, cover);
+            await addSeries(manga.title, author, volumes, status, cover, manga.synopsis);
             showToast(`${manga.title} added to library!`, 'success');
             if (closeAfter) closeModal();
         } catch (error) {
