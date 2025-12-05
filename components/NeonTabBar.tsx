@@ -41,8 +41,10 @@ export function NeonTabBar({ state, descriptors, navigation }: BottomTabBarProps
 
     return (
         <View style={styles.container}>
+            {/* Solid dark background for opacity */}
+            <View style={[StyleSheet.absoluteFillObject, { backgroundColor: 'rgba(9, 9, 11, 0.92)' }]} />
             <BlurView
-                intensity={80}
+                intensity={100}
                 tint="dark"
                 style={StyleSheet.absoluteFillObject}
             />

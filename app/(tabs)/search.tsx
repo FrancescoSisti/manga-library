@@ -3,16 +3,15 @@ import { Toast } from '@/components/Toast';
 import { Colors } from '@/constants/Colors';
 import { Ionicons } from '@expo/vector-icons';
 import axios from 'axios';
+import * as Haptics from 'expo-haptics';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useState } from 'react';
-import { Dimensions, FlatList, Image, Keyboard, StyleSheet, TouchableOpacity, View } from 'react-native';
-import { ActivityIndicator, IconButton, Text, TextInput, useTheme } from 'react-native-paper';
+import { Dimensions, FlatList, Image, Keyboard, ScrollView, StyleSheet, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Button, Divider, IconButton, Modal, Portal, Text, TextInput, useTheme } from 'react-native-paper';
 import Animated, { FadeIn, Layout } from 'react-native-reanimated';
 
-const { width } = Dimensions.get('window');
+const { width, height } = Dimensions.get('window');
 const CARD_HEIGHT = 220;
-
-const AnimatedTouchable = Animated.createAnimatedComponent(TouchableOpacity);
 
 export default function SearchScreen() {
     const theme = useTheme();
@@ -20,6 +19,7 @@ export default function SearchScreen() {
     const [loading, setLoading] = useState(false);
     const [results, setResults] = useState<any[]>([]);
     const [toast, setToast] = useState<{ visible: boolean; message: string; type: 'success' | 'error' | 'info' | 'wishlist' }>({ visible: false, message: '', type: 'success' });
+    const [previewModal, setPreviewModal] = useState<{ visible: boolean; manga: any | null }>({ visible: false, manga: null });
 
     const searchManga = async () => {
         if (!query.trim()) return;
@@ -40,7 +40,12 @@ export default function SearchScreen() {
         setToast({ visible: true, message, type });
     };
 
-    const handleAddSeries = async (manga: any) => {
+    const handleOpenPreview = (manga: any) => {
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+        setPreviewModal({ visible: true, manga });
+    };
+
+    const handleAddSeries = async (manga: any, closeModal = false) => {
         try {
             if (isInLibrary(manga.title)) {
                 showToast('Already in your library!', 'info');
@@ -52,13 +57,14 @@ export default function SearchScreen() {
 
             await addSeries(manga.title, author, manga.volumes, status, cover);
             showToast(`${manga.title} added to library!`, 'success');
+            if (closeModal) setPreviewModal({ visible: false, manga: null });
         } catch (error) {
             console.error(error);
             showToast('Could not add series', 'error');
         }
     };
 
-    const handleAddToWishlist = async (manga: any) => {
+    const handleAddToWishlist = async (manga: any, closeModal = false) => {
         try {
             if (isInWishlist(manga.mal_id)) {
                 showToast('Already in wishlist!', 'info');
@@ -69,6 +75,7 @@ export default function SearchScreen() {
 
             await addToWishlist(manga.mal_id, manga.title, author, manga.volumes, manga.status, cover);
             showToast(`Added to wishlist!`, 'wishlist');
+            if (closeModal) setPreviewModal({ visible: false, manga: null });
         } catch (error) {
             console.error(error);
             showToast('Could not add to wishlist', 'error');
@@ -79,57 +86,70 @@ export default function SearchScreen() {
         const coverUrl = item.images?.jpg?.large_image_url || item.images?.jpg?.image_url;
 
         return (
-            <Animated.View
-                entering={FadeIn.delay(index * 50).duration(400)}
-                layout={Layout.springify()}
-                style={styles.cardContainer}
+            <TouchableOpacity
+                activeOpacity={0.9}
+                onPress={() => handleOpenPreview(item)}
             >
-                <Image source={{ uri: coverUrl }} style={styles.cardImage} resizeMode="cover" />
-                <LinearGradient
-                    colors={['transparent', 'rgba(0,0,0,0.7)', 'rgba(0,0,0,0.95)']}
-                    locations={[0, 0.5, 1]}
-                    style={styles.cardGradient}
-                />
+                <Animated.View
+                    entering={FadeIn.delay(index * 50).duration(400)}
+                    layout={Layout.springify()}
+                    style={styles.cardContainer}
+                >
+                    <Image source={{ uri: coverUrl }} style={styles.cardImage} resizeMode="cover" />
+                    <LinearGradient
+                        colors={['transparent', 'rgba(0,0,0,0.7)', 'rgba(0,0,0,0.95)']}
+                        locations={[0, 0.5, 1]}
+                        style={styles.cardGradient}
+                    />
 
-                <View style={styles.cardContent}>
-                    <View style={styles.cardInfo}>
-                        <Text variant="titleMedium" style={styles.cardTitle} numberOfLines={2}>
-                            {item.title}
-                        </Text>
-                        <Text variant="bodySmall" style={styles.cardAuthor} numberOfLines={1}>
-                            {item.authors?.[0]?.name || 'Unknown Author'}
-                        </Text>
-                        <View style={styles.metaRow}>
-                            <View style={styles.badge}>
-                                <Text style={styles.badgeText}>{item.volumes || '?'} vols</Text>
-                            </View>
-                            <View style={[styles.badge, { backgroundColor: 'rgba(139, 92, 246, 0.3)' }]}>
-                                <Text style={[styles.badgeText, { color: Colors.neon.secondary }]}>{item.status}</Text>
+                    <View style={styles.cardContent}>
+                        <View style={styles.cardInfo}>
+                            <Text variant="titleMedium" style={styles.cardTitle} numberOfLines={2}>
+                                {item.title}
+                            </Text>
+                            <Text variant="bodySmall" style={styles.cardAuthor} numberOfLines={1}>
+                                {item.authors?.[0]?.name || 'Unknown Author'}
+                            </Text>
+                            <View style={styles.metaRow}>
+                                <View style={styles.badge}>
+                                    <Text style={styles.badgeText}>{item.volumes || '?'} vols</Text>
+                                </View>
+                                <View style={[styles.badge, { backgroundColor: 'rgba(139, 92, 246, 0.3)' }]}>
+                                    <Text style={[styles.badgeText, { color: Colors.neon.secondary }]}>{item.status}</Text>
+                                </View>
                             </View>
                         </View>
-                    </View>
 
-                    <View style={styles.cardActions}>
-                        <TouchableOpacity
-                            style={[styles.actionBtn, styles.wishlistBtn]}
-                            onPress={() => handleAddToWishlist(item)}
-                            activeOpacity={0.7}
-                        >
-                            <Ionicons name="heart-outline" size={20} color={Colors.neon.primary} />
-                        </TouchableOpacity>
-                        <TouchableOpacity
-                            style={[styles.actionBtn, styles.addBtn]}
-                            onPress={() => handleAddSeries(item)}
-                            activeOpacity={0.7}
-                        >
-                            <Ionicons name="add" size={22} color="#fff" />
-                            <Text style={styles.addBtnText}>Library</Text>
-                        </TouchableOpacity>
+                        <View style={styles.cardActions}>
+                            <TouchableOpacity
+                                style={[styles.actionBtn, styles.wishlistBtn]}
+                                onPress={(e) => {
+                                    e.stopPropagation();
+                                    handleAddToWishlist(item);
+                                }}
+                                activeOpacity={0.7}
+                            >
+                                <Ionicons name="heart-outline" size={20} color={Colors.neon.primary} />
+                            </TouchableOpacity>
+                            <TouchableOpacity
+                                style={[styles.actionBtn, styles.addBtn]}
+                                onPress={(e) => {
+                                    e.stopPropagation();
+                                    handleAddSeries(item);
+                                }}
+                                activeOpacity={0.7}
+                            >
+                                <Ionicons name="add" size={22} color="#fff" />
+                                <Text style={styles.addBtnText}>Library</Text>
+                            </TouchableOpacity>
+                        </View>
                     </View>
-                </View>
-            </Animated.View>
+                </Animated.View>
+            </TouchableOpacity>
         );
     };
+
+    const manga = previewModal.manga;
 
     return (
         <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
@@ -139,6 +159,96 @@ export default function SearchScreen() {
                 type={toast.type}
                 onHide={() => setToast({ ...toast, visible: false })}
             />
+
+            {/* Manga Preview Modal */}
+            <Portal>
+                <Modal
+                    visible={previewModal.visible}
+                    onDismiss={() => setPreviewModal({ visible: false, manga: null })}
+                    contentContainerStyle={styles.modalContainer}
+                >
+                    {manga && (
+                        <ScrollView showsVerticalScrollIndicator={false}>
+                            <View style={styles.modalHeader}>
+                                <Image
+                                    source={{ uri: manga.images?.jpg?.large_image_url }}
+                                    style={styles.modalCover}
+                                    resizeMode="cover"
+                                />
+                                <LinearGradient
+                                    colors={['transparent', Colors.neon.surface]}
+                                    style={styles.modalCoverGradient}
+                                />
+                            </View>
+
+                            <View style={styles.modalBody}>
+                                <Text variant="headlineSmall" style={styles.modalTitle}>
+                                    {manga.title}
+                                </Text>
+                                <Text variant="bodyMedium" style={styles.modalAuthor}>
+                                    {manga.authors?.map((a: any) => a.name).join(', ') || 'Unknown Author'}
+                                </Text>
+
+                                <View style={styles.modalStats}>
+                                    <View style={styles.statItem}>
+                                        <Ionicons name="book" size={18} color={Colors.neon.accent} />
+                                        <Text style={styles.statText}>{manga.volumes || '?'} Volumes</Text>
+                                    </View>
+                                    <View style={styles.statItem}>
+                                        <Ionicons name="star" size={18} color="#FFD700" />
+                                        <Text style={styles.statText}>{manga.score || 'N/A'}</Text>
+                                    </View>
+                                    <View style={styles.statItem}>
+                                        <View style={[styles.statusDot, { backgroundColor: manga.status === 'Publishing' ? '#22C55E' : Colors.neon.secondary }]} />
+                                        <Text style={styles.statText}>{manga.status}</Text>
+                                    </View>
+                                </View>
+
+                                <Divider style={styles.divider} />
+
+                                <Text variant="titleSmall" style={styles.sectionTitle}>Synopsis</Text>
+                                <Text variant="bodySmall" style={styles.synopsis} numberOfLines={8}>
+                                    {manga.synopsis || 'No synopsis available.'}
+                                </Text>
+
+                                {manga.genres && manga.genres.length > 0 && (
+                                    <>
+                                        <Text variant="titleSmall" style={[styles.sectionTitle, { marginTop: 16 }]}>Genres</Text>
+                                        <View style={styles.genreContainer}>
+                                            {manga.genres.slice(0, 5).map((g: any) => (
+                                                <View key={g.mal_id} style={styles.genreTag}>
+                                                    <Text style={styles.genreText}>{g.name}</Text>
+                                                </View>
+                                            ))}
+                                        </View>
+                                    </>
+                                )}
+
+                                <View style={styles.modalActions}>
+                                    <Button
+                                        mode="outlined"
+                                        icon="heart-outline"
+                                        onPress={() => handleAddToWishlist(manga, true)}
+                                        textColor={Colors.neon.primary}
+                                        style={styles.modalBtn}
+                                    >
+                                        Wishlist
+                                    </Button>
+                                    <Button
+                                        mode="contained"
+                                        icon="plus"
+                                        onPress={() => handleAddSeries(manga, true)}
+                                        buttonColor={Colors.neon.primary}
+                                        style={styles.modalBtn}
+                                    >
+                                        Add to Library
+                                    </Button>
+                                </View>
+                            </View>
+                        </ScrollView>
+                    )}
+                </Modal>
+            </Portal>
 
             <LinearGradient
                 colors={[Colors.neon.gradientStart, 'transparent']}
@@ -365,5 +475,95 @@ const styles = StyleSheet.create({
     addBtnText: {
         color: '#fff',
         fontWeight: '600',
+    },
+    // Modal styles
+    modalContainer: {
+        margin: 20,
+        backgroundColor: Colors.neon.surface,
+        borderRadius: 24,
+        overflow: 'hidden',
+        maxHeight: height * 0.85,
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.1)',
+    },
+    modalHeader: {
+        height: 200,
+        position: 'relative',
+    },
+    modalCover: {
+        width: '100%',
+        height: '100%',
+    },
+    modalCoverGradient: {
+        position: 'absolute',
+        bottom: 0,
+        left: 0,
+        right: 0,
+        height: 100,
+    },
+    modalBody: {
+        padding: 20,
+    },
+    modalTitle: {
+        color: '#fff',
+        fontWeight: 'bold',
+    },
+    modalAuthor: {
+        color: Colors.neon.accent,
+        marginTop: 4,
+    },
+    modalStats: {
+        flexDirection: 'row',
+        gap: 20,
+        marginTop: 16,
+    },
+    statItem: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 6,
+    },
+    statText: {
+        color: '#aaa',
+        fontSize: 13,
+    },
+    statusDot: {
+        width: 8,
+        height: 8,
+        borderRadius: 4,
+    },
+    divider: {
+        marginVertical: 16,
+        backgroundColor: 'rgba(255,255,255,0.1)',
+    },
+    sectionTitle: {
+        color: '#888',
+        marginBottom: 8,
+    },
+    synopsis: {
+        color: '#bbb',
+        lineHeight: 20,
+    },
+    genreContainer: {
+        flexDirection: 'row',
+        flexWrap: 'wrap',
+        gap: 8,
+    },
+    genreTag: {
+        backgroundColor: 'rgba(139, 92, 246, 0.2)',
+        paddingHorizontal: 10,
+        paddingVertical: 6,
+        borderRadius: 8,
+    },
+    genreText: {
+        color: Colors.neon.secondary,
+        fontSize: 12,
+    },
+    modalActions: {
+        flexDirection: 'row',
+        gap: 12,
+        marginTop: 24,
+    },
+    modalBtn: {
+        flex: 1,
     },
 });

@@ -1,12 +1,14 @@
-import { getSeries, Series } from '@/components/database';
+import { deleteSeries, getSeries, Series } from '@/components/database';
+import { Toast } from '@/components/Toast';
 import { Colors } from '@/constants/Colors';
 import { Ionicons } from '@expo/vector-icons';
+import * as Haptics from 'expo-haptics';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router, useFocusEffect } from 'expo-router';
 import { useCallback, useState } from 'react';
 import { Dimensions, FlatList, Image, StyleSheet, TouchableOpacity, View } from 'react-native';
-import { Text, useTheme } from 'react-native-paper';
-import Animated, { FadeIn, FadeInDown, Layout } from 'react-native-reanimated';
+import { Button, Modal, Portal, Text, useTheme } from 'react-native-paper';
+import Animated, { FadeIn, FadeInDown, Layout, SlideOutLeft } from 'react-native-reanimated';
 
 const { width } = Dimensions.get('window');
 const COLUMN_COUNT = 2;
@@ -17,20 +19,47 @@ const AnimatedTouchable = Animated.createAnimatedComponent(TouchableOpacity);
 export default function HomeScreen() {
   const theme = useTheme();
   const [series, setSeries] = useState<Series[]>([]);
+  const [deleteModal, setDeleteModal] = useState<{ visible: boolean; item: Series | null }>({ visible: false, item: null });
+  const [toast, setToast] = useState<{ visible: boolean; message: string; type: 'success' | 'error' | 'info' | 'wishlist' }>({ visible: false, message: '', type: 'success' });
 
   useFocusEffect(
     useCallback(() => {
-      const data = getSeries();
-      setSeries(data);
+      loadSeries();
     }, [])
   );
+
+  const loadSeries = () => {
+    const data = getSeries();
+    setSeries(data);
+  };
+
+  const showToast = (message: string, type: 'success' | 'error' | 'info' | 'wishlist' = 'success') => {
+    setToast({ visible: true, message, type });
+  };
+
+  const handleLongPress = (item: Series) => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    setDeleteModal({ visible: true, item });
+  };
+
+  const handleDelete = () => {
+    if (deleteModal.item) {
+      deleteSeries(deleteModal.item.id);
+      setDeleteModal({ visible: false, item: null });
+      loadSeries();
+      showToast(`${deleteModal.item.title} removed from library`, 'info');
+    }
+  };
 
   const renderItem = ({ item, index }: { item: Series; index: number }) => (
     <AnimatedTouchable
       entering={FadeInDown.delay(index * 80).duration(400).springify()}
+      exiting={SlideOutLeft.duration(300)}
       layout={Layout.springify()}
       style={[styles.item, { backgroundColor: '#111' }]}
       onPress={() => router.push(`/series/${item.id}`)}
+      onLongPress={() => handleLongPress(item)}
+      delayLongPress={400}
       activeOpacity={0.85}
     >
       <Image source={{ uri: item.coverImage }} style={styles.cover} resizeMode="cover" />
@@ -54,6 +83,47 @@ export default function HomeScreen() {
 
   return (
     <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
+      <Toast
+        visible={toast.visible}
+        message={toast.message}
+        type={toast.type}
+        onHide={() => setToast({ ...toast, visible: false })}
+      />
+
+      <Portal>
+        <Modal
+          visible={deleteModal.visible}
+          onDismiss={() => setDeleteModal({ visible: false, item: null })}
+          contentContainerStyle={styles.modalContainer}
+        >
+          <View style={styles.modalContent}>
+            <Ionicons name="trash-outline" size={48} color={Colors.neon.error} />
+            <Text variant="titleLarge" style={styles.modalTitle}>Remove from Library?</Text>
+            <Text variant="bodyMedium" style={styles.modalSubtitle}>
+              "{deleteModal.item?.title}" will be removed. This action cannot be undone.
+            </Text>
+            <View style={styles.modalActions}>
+              <Button
+                mode="outlined"
+                onPress={() => setDeleteModal({ visible: false, item: null })}
+                textColor="#888"
+                style={styles.modalBtn}
+              >
+                Cancel
+              </Button>
+              <Button
+                mode="contained"
+                onPress={handleDelete}
+                buttonColor={Colors.neon.error}
+                style={styles.modalBtn}
+              >
+                Remove
+              </Button>
+            </View>
+          </View>
+        </Modal>
+      </Portal>
+
       <LinearGradient
         colors={[Colors.neon.gradientStart, Colors.neon.background]}
         style={styles.backgroundGradient}
@@ -202,5 +272,36 @@ const styles = StyleSheet.create({
     color: '#444',
     fontSize: 14,
     marginTop: 5,
+  },
+  modalContainer: {
+    margin: 20,
+    backgroundColor: Colors.neon.surface,
+    borderRadius: 20,
+    padding: 24,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.1)',
+  },
+  modalContent: {
+    alignItems: 'center',
+  },
+  modalTitle: {
+    color: '#fff',
+    fontWeight: 'bold',
+    marginTop: 16,
+    textAlign: 'center',
+  },
+  modalSubtitle: {
+    color: '#888',
+    textAlign: 'center',
+    marginTop: 8,
+  },
+  modalActions: {
+    flexDirection: 'row',
+    gap: 12,
+    marginTop: 24,
+    width: '100%',
+  },
+  modalBtn: {
+    flex: 1,
   },
 });
