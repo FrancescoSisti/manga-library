@@ -1,4 +1,4 @@
-import { initDatabase } from '@/components/database';
+import { initDatabase, initWishlistTable } from '@/components/database';
 import { Colors } from '@/constants/Colors';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native';
@@ -32,14 +32,29 @@ export default function RootLayout() {
 
   useEffect(() => {
     initDatabase();
+    initWishlistTable();
   }, []);
 
   return (
     <PaperProvider theme={customPaperTheme}>
       <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
-        <Stack>
-          <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-          <Stack.Screen name="modal" options={{ presentation: 'modal', title: 'Modal' }} />
+        <Stack
+          screenOptions={{
+            animation: 'slide_from_right',
+            animationDuration: 300,
+            gestureEnabled: true,
+            gestureDirection: 'horizontal',
+          }}
+        >
+          <Stack.Screen name="(tabs)" options={{ headerShown: false, animation: 'fade' }} />
+          <Stack.Screen
+            name="series/[id]"
+            options={{
+              headerShown: false,
+              animation: 'slide_from_bottom',
+              animationDuration: 400,
+            }}
+          />
         </Stack>
         <StatusBar style="light" />
       </ThemeProvider>
