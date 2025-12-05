@@ -6,8 +6,8 @@ import * as Haptics from 'expo-haptics';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router, useFocusEffect } from 'expo-router';
 import { useCallback, useState } from 'react';
-import { Dimensions, FlatList, Image, StyleSheet, TouchableOpacity, View } from 'react-native';
-import { Button, Modal, Portal, Text, useTheme } from 'react-native-paper';
+import { Dimensions, FlatList, Image, Pressable, Modal as RNModal, StyleSheet, TouchableOpacity, View } from 'react-native';
+import { Text, useTheme } from 'react-native-paper';
 import Animated, { FadeIn, FadeInDown, Layout, SlideOutLeft } from 'react-native-reanimated';
 
 const { width } = Dimensions.get('window');
@@ -89,40 +89,52 @@ export default function HomeScreen() {
         type={toast.type}
         onHide={() => setToast({ ...toast, visible: false })}
       />
+      {/* Delete Confirmation Modal */}
+      <RNModal
+        visible={deleteModal.visible}
+        animationType="fade"
+        transparent={true}
+        onRequestClose={() => setDeleteModal({ visible: false, item: null })}
+      >
+        <View style={styles.modalOverlay}>
+          <Pressable
+            style={styles.modalBackdrop}
+            onPress={() => setDeleteModal({ visible: false, item: null })}
+          />
+          <View style={styles.modalBox}>
+            <TouchableOpacity
+              style={styles.closeBtn}
+              onPress={() => setDeleteModal({ visible: false, item: null })}
+              activeOpacity={0.7}
+            >
+              <Ionicons name="close" size={22} color="#888" />
+            </TouchableOpacity>
 
-      <Portal>
-        <Modal
-          visible={deleteModal.visible}
-          onDismiss={() => setDeleteModal({ visible: false, item: null })}
-          contentContainerStyle={styles.modalContainer}
-        >
-          <View style={styles.modalContent}>
             <Ionicons name="trash-outline" size={48} color={Colors.neon.error} />
             <Text variant="titleLarge" style={styles.modalTitle}>Remove from Library?</Text>
             <Text variant="bodyMedium" style={styles.modalSubtitle}>
-              "{deleteModal.item?.title}" will be removed. This action cannot be undone.
+              "{deleteModal.item?.title}" will be removed.
             </Text>
             <View style={styles.modalActions}>
-              <Button
-                mode="outlined"
+              <TouchableOpacity
+                style={styles.cancelBtn}
                 onPress={() => setDeleteModal({ visible: false, item: null })}
-                textColor="#888"
-                style={styles.modalBtn}
+                activeOpacity={0.8}
               >
-                Cancel
-              </Button>
-              <Button
-                mode="contained"
+                <Text style={styles.cancelText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.deleteBtn}
                 onPress={handleDelete}
-                buttonColor={Colors.neon.error}
-                style={styles.modalBtn}
+                activeOpacity={0.8}
               >
-                Remove
-              </Button>
+                <Ionicons name="trash" size={18} color="#fff" />
+                <Text style={styles.deleteText}>Remove</Text>
+              </TouchableOpacity>
             </View>
           </View>
-        </Modal>
-      </Portal>
+        </View>
+      </RNModal>
 
       <LinearGradient
         colors={[Colors.neon.gradientStart, Colors.neon.background]}
@@ -301,7 +313,62 @@ const styles = StyleSheet.create({
     marginTop: 24,
     width: '100%',
   },
-  modalBtn: {
+  // New modal styles for RNModal
+  modalOverlay: {
     flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  modalBackdrop: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0, 0, 0, 0.85)',
+  },
+  modalBox: {
+    backgroundColor: Colors.neon.surface,
+    borderRadius: 24,
+    padding: 28,
+    margin: 30,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#2a2a35',
+    position: 'relative',
+  },
+  closeBtn: {
+    position: 'absolute',
+    top: 12,
+    right: 12,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: 'rgba(255,255,255,0.05)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  cancelBtn: {
+    flex: 1,
+    height: 48,
+    borderRadius: 14,
+    borderWidth: 1.5,
+    borderColor: '#3a3a45',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  cancelText: {
+    color: '#888',
+    fontWeight: '600',
+  },
+  deleteBtn: {
+    flex: 1,
+    height: 48,
+    borderRadius: 14,
+    backgroundColor: Colors.neon.error,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+  },
+  deleteText: {
+    color: '#fff',
+    fontWeight: '600',
   },
 });
