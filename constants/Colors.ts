@@ -25,16 +25,19 @@ export const Colors = {
     },
     // Custom theme colors
     neon: {
-        primary: '#BB86FC',
-        secondary: '#03DAC6',
-        background: '#121212',
-        surface: '#1E1E1E',
-        error: '#CF6679',
-        onPrimary: '#000000',
-        onSecondary: '#000000',
-        onBackground: '#FFFFFF',
-        onSurface: '#FFFFFF',
-        onError: '#000000',
-        accent: '#00e5ff', // bright cyan
+        primary: '#D946EF', // Fuschia 500
+        secondary: '#8B5CF6', // Violet 500
+        background: '#09090B', // Zinc 950
+        surface: '#18181B', // Zinc 900
+        outline: '#27272A', // Zinc 800
+        error: '#EF4444',
+        onPrimary: '#FFFFFF',
+        onSecondary: '#FFFFFF',
+        onBackground: '#FAFAFA',
+        onSurface: '#E4E4E7',
+        onError: '#FFFFFF',
+        accent: '#22D3EE', // Cyan 400
+        gradientStart: '#4c1d95',
+        gradientEnd: '#be185d',
     }
 };

@@ -25,6 +25,24 @@ export const initDatabase = () => {
   `);
 };
 
+export interface Series {
+    id: number;
+    title: string;
+    author: string;
+    totalVolumes: number | null;
+    status: string;
+    coverImage: string;
+    createdAt?: string;
+}
+
+export interface Volume {
+    id: number;
+    seriesId: number;
+    volumeNumber: number;
+    isOwned: number; // SQLite uses 0/1 for booleans
+    isRead: number;
+}
+
 export const addSeries = (title: string, author: string, totalVolumes: number | null, status: string, coverImage: string) => {
     return db.runSync(
         'INSERT INTO Series (title, author, totalVolumes, status, coverImage) VALUES (?, ?, ?, ?, ?)',
@@ -32,16 +50,16 @@ export const addSeries = (title: string, author: string, totalVolumes: number | 
     );
 };
 
-export const getSeries = () => {
-    return db.getAllSync('SELECT * FROM Series ORDER BY createdAt DESC');
+export const getSeries = (): Series[] => {
+    return db.getAllSync<Series>('SELECT * FROM Series ORDER BY createdAt DESC');
 };
 
-export const getSeriesById = (id: number) => {
-    return db.getFirstSync('SELECT * FROM Series WHERE id = ?', id);
+export const getSeriesById = (id: number): Series | null => {
+    return db.getFirstSync<Series>('SELECT * FROM Series WHERE id = ?', id);
 };
 
-export const getVolumes = (seriesId: number) => {
-    return db.getAllSync('SELECT * FROM Volumes WHERE seriesId = ?', seriesId);
+export const getVolumes = (seriesId: number): Volume[] => {
+    return db.getAllSync<Volume>('SELECT * FROM Volumes WHERE seriesId = ?', seriesId);
 };
 
 export const toggleVolume = (seriesId: number, volumeNumber: number, isOwned: boolean) => {

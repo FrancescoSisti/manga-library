@@ -1,5 +1,7 @@
 import { addSeries } from '@/components/database';
+import { Colors } from '@/constants/Colors';
 import axios from 'axios';
+import { LinearGradient } from 'expo-linear-gradient';
 import { useState } from 'react';
 import { Alert, FlatList, Keyboard, StyleSheet, View } from 'react-native';
 import { ActivityIndicator, Button, Card, Text, TextInput, useTheme } from 'react-native-paper';
@@ -52,33 +54,45 @@ export default function SearchScreen() {
                     right={<TextInput.Icon icon="magnify" onPress={searchManga} />}
                     onSubmitEditing={searchManga}
                     style={styles.input}
+                    textColor="#fff"
+                    placeholderTextColor="gray"
+                    theme={{ colors: { primary: Colors.neon.primary, outline: Colors.neon.outline } }}
                 />
             </View>
 
-            {loading && <ActivityIndicator animating={true} size="large" style={styles.loader} />}
+            {loading && <ActivityIndicator animating={true} size="large" color={Colors.neon.primary} style={styles.loader} />}
 
             <FlatList
                 data={results}
                 keyExtractor={(item) => item.mal_id.toString()}
                 contentContainerStyle={styles.list}
                 renderItem={({ item }) => (
-                    <Card style={styles.card} mode="elevated">
-                        <Card.Cover source={{ uri: item.images?.jpg?.image_url }} />
-                        <Card.Title
-                            title={item.title}
-                            subtitle={item.authors?.[0]?.name}
-                            titleStyle={{ fontWeight: 'bold' }}
+                    <Card style={[styles.card, { backgroundColor: theme.colors.surface }]} mode="elevated">
+                        <Card.Cover source={{ uri: item.images?.jpg?.image_url }} style={styles.cardCover} />
+                        <LinearGradient
+                            colors={['transparent', 'rgba(0,0,0,0.95)']}
+                            style={styles.cardGradient}
                         />
-                        <Card.Content>
-                            <Text variant="bodyMedium" numberOfLines={3}>{item.synopsis}</Text>
-                            <View style={styles.stats}>
-                                <Text variant="labelSmall">Volumes: {item.volumes || '?'}</Text>
-                                <Text variant="labelSmall">Status: {item.status}</Text>
+                        <View style={styles.cardContentOverlay}>
+                            <View style={{ flex: 1 }}>
+                                <Text variant="titleMedium" style={{ fontWeight: 'bold', color: '#fff' }} numberOfLines={1}>{item.title}</Text>
+                                <Text variant="bodySmall" style={{ color: Colors.neon.accent }}>{item.authors?.[0]?.name}</Text>
+                                <View style={styles.stats}>
+                                    <Text variant="labelSmall" style={{ color: '#ccc' }}>Vol: {item.volumes || '?'}</Text>
+                                    <View style={styles.dot} />
+                                    <Text variant="labelSmall" style={{ color: '#ccc' }}>{item.status}</Text>
+                                </View>
                             </View>
-                        </Card.Content>
-                        <Card.Actions>
-                            <Button mode="contained" onPress={() => handleAddSeries(item)}>Add to Library</Button>
-                        </Card.Actions>
+                            <Button
+                                mode="contained"
+                                buttonColor={Colors.neon.primary}
+                                onPress={() => handleAddSeries(item)}
+                                compact
+                                labelStyle={{ fontSize: 12 }}
+                            >
+                                Add
+                            </Button>
+                        </View>
                     </Card>
                 )}
             />
@@ -90,12 +104,13 @@ const styles = StyleSheet.create({
     container: {
         flex: 1,
         padding: 10,
+        paddingTop: 50,
     },
     searchContainer: {
         marginBottom: 10,
     },
     input: {
-        backgroundColor: 'transparent',
+        backgroundColor: 'rgba(255,255,255,0.05)',
     },
     loader: {
         marginTop: 20,
@@ -105,10 +120,35 @@ const styles = StyleSheet.create({
     },
     card: {
         marginBottom: 15,
+        overflow: 'hidden',
+        height: 200,
+        borderRadius: 12,
+        justifyContent: 'flex-end',
+    },
+    cardCover: {
+        ...StyleSheet.absoluteFillObject,
+        height: 200,
+    },
+    cardGradient: {
+        ...StyleSheet.absoluteFillObject,
+        height: 200,
+    },
+    cardContentOverlay: {
+        padding: 15,
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
     },
     stats: {
         flexDirection: 'row',
-        justifyContent: 'space-between',
-        marginTop: 10,
+        alignItems: 'center',
+        marginTop: 4,
+    },
+    dot: {
+        width: 4,
+        height: 4,
+        borderRadius: 2,
+        backgroundColor: '#666',
+        marginHorizontal: 6,
     }
 });
