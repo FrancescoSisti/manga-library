@@ -1,4 +1,4 @@
-import { addSeries, isInLibrary } from '@/components/database';
+import { addSeries, getSeriesByTitle, toggleVolume } from '@/components/database';
 import { getBestVolumeCount, ISBNLookupResult, lookupByISBN } from '@/components/googlebooks';
 import { Toast } from '@/components/Toast';
 import { Colors } from '@/constants/Colors';
@@ -46,11 +46,19 @@ export default function ScannerScreen() {
 
         setLoading(true);
         try {
-            // Check if series already exists
-            if (!isInLibrary(result.seriesTitle)) {
-                // Add new series
+            let seriesId: number | null = null;
+            let wasNewSeries = false;
+
+            // 1. Check if series exists
+            const existingSeries = getSeriesByTitle(result.seriesTitle);
+
+            if (existingSeries) {
+                seriesId = existingSeries.id;
+            } else {
+                // 2. Add new series
                 const volumes = await getBestVolumeCount(result.seriesTitle, null);
-                await addSeries(
+                // addSeries returns the InsertResult which has lastInsertRowId
+                const insertResult = await addSeries(
                     result.seriesTitle,
                     result.authors?.[0] || 'Unknown',
                     volumes,
@@ -58,21 +66,32 @@ export default function ScannerScreen() {
                     result.coverUrl || '',
                     result.description
                 );
-                showToast(`${result.seriesTitle} aggiunto!`, 'success');
+                seriesId = insertResult.lastInsertRowId;
+                wasNewSeries = true;
             }
 
-            // Mark the volume as owned if we know the volume number
-            if (result.volumeNumber) {
-                // We need to get the series ID - for now just show success
-                showToast(`Volume ${result.volumeNumber} registrato!`, 'success');
+            // 3. Mark volume as owned
+            if (seriesId && result.volumeNumber) {
+                await toggleVolume(seriesId, result.volumeNumber, true);
+
+                if (wasNewSeries) {
+                    showToast(`${result.seriesTitle} aggiunta con Vol. ${result.volumeNumber}!`, 'success');
+                } else {
+                    showToast(`Vol. ${result.volumeNumber} aggiunto a ${result.seriesTitle}!`, 'success');
+                }
+            } else if (wasNewSeries) {
+                showToast(`${result.seriesTitle} aggiunta!`, 'success');
+            } else {
+                showToast(`${result.seriesTitle} è già in libreria`, 'info');
             }
 
             // Reset for next scan
             setTimeout(() => {
                 setResult(null);
                 setScanned(false);
-            }, 2000);
+            }, 1500);
         } catch (error) {
+            console.error(error);
             showToast('Errore durante l\'aggiunta', 'error');
         } finally {
             setLoading(false);

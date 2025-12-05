@@ -67,6 +67,10 @@ export const getSeriesById = (id: number): Series | null => {
     return db.getFirstSync<Series>('SELECT * FROM Series WHERE id = ?', id);
 };
 
+export const getSeriesByTitle = (title: string): Series | null => {
+    return db.getFirstSync<Series>('SELECT * FROM Series WHERE title = ?', title);
+};
+
 export const deleteSeries = (id: number) => {
     return db.runSync('DELETE FROM Series WHERE id = ?', id);
 };
