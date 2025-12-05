@@ -1,15 +1,13 @@
 import { Colors } from '@/constants/Colors';
 import { Ionicons } from '@expo/vector-icons';
-import { BlurView } from 'expo-blur';
 import React, { useEffect } from 'react';
-import { Dimensions, StyleSheet, View } from 'react-native';
+import { Dimensions, Platform, StyleSheet, View } from 'react-native';
 import { Text } from 'react-native-paper';
 import Animated, {
     Easing,
     runOnJS,
     useAnimatedStyle,
     useSharedValue,
-    withSpring,
     withTiming,
 } from 'react-native-reanimated';
 
@@ -42,20 +40,26 @@ const colors: Record<ToastType, string> = {
 export function Toast({ visible, message, type = 'success', duration = 2500, onHide }: ToastProps) {
     const translateY = useSharedValue(-100);
     const opacity = useSharedValue(0);
-    const scale = useSharedValue(0.8);
+    const progressWidth = useSharedValue(100);
 
     useEffect(() => {
         if (visible) {
-            translateY.value = withSpring(60, { damping: 15, stiffness: 120 });
+            // Reset
+            progressWidth.value = 100;
+
+            // Simple slide in and fade
+            translateY.value = withTiming(50, { duration: 250, easing: Easing.out(Easing.ease) });
             opacity.value = withTiming(1, { duration: 200 });
-            scale.value = withSpring(1, { damping: 12 });
+
+            // Animate progress bar
+            progressWidth.value = withTiming(0, { duration: duration, easing: Easing.linear });
 
             const timeout = setTimeout(() => {
-                translateY.value = withTiming(-100, { duration: 300, easing: Easing.inOut(Easing.ease) });
-                opacity.value = withTiming(0, { duration: 300 }, () => {
+                // Simple slide out and fade
+                translateY.value = withTiming(-100, { duration: 250, easing: Easing.in(Easing.ease) });
+                opacity.value = withTiming(0, { duration: 200 }, () => {
                     runOnJS(onHide)();
                 });
-                scale.value = withTiming(0.8, { duration: 300 });
             }, duration);
 
             return () => clearTimeout(timeout);
@@ -63,20 +67,47 @@ export function Toast({ visible, message, type = 'success', duration = 2500, onH
     }, [visible]);
 
     const animatedStyle = useAnimatedStyle(() => ({
-        transform: [{ translateY: translateY.value }, { scale: scale.value }],
+        transform: [{ translateY: translateY.value }],
         opacity: opacity.value,
+    }));
+
+    const progressStyle = useAnimatedStyle(() => ({
+        width: `${progressWidth.value}%`,
     }));
 
     if (!visible) return null;
 
+    const glowColor = colors[type];
+
     return (
         <Animated.View style={[styles.container, animatedStyle]}>
-            <BlurView intensity={80} tint="dark" style={styles.blur}>
-                <View style={[styles.iconContainer, { backgroundColor: colors[type] }]}>
-                    <Ionicons name={icons[type]} size={20} color="#fff" />
+            <View style={[
+                styles.glowWrapper,
+                {
+                    shadowColor: glowColor,
+                    ...(Platform.OS === 'ios' ? {
+                        shadowOpacity: 0.4,
+                        shadowRadius: 10,
+                        shadowOffset: { width: 0, height: 4 },
+                    } : {
+                        elevation: 6,
+                    }),
+                }
+            ]}>
+                <View style={[styles.blur, { borderColor: glowColor, backgroundColor: 'rgba(20, 20, 30, 0.98)' }]}>
+                    <View style={[styles.iconContainer, { backgroundColor: glowColor }]}>
+                        <Ionicons name={icons[type]} size={20} color="#fff" />
+                    </View>
+                    <View style={styles.contentContainer}>
+                        <Text style={styles.message} numberOfLines={2}>{message}</Text>
+                    </View>
+
+                    {/* Progress bar */}
+                    <View style={styles.progressContainer}>
+                        <Animated.View style={[styles.progressBar, { backgroundColor: glowColor }, progressStyle]} />
+                    </View>
                 </View>
-                <Text style={styles.message} numberOfLines={2}>{message}</Text>
-            </BlurView>
+            </View>
         </Animated.View>
     );
 }
@@ -85,22 +116,25 @@ const styles = StyleSheet.create({
     container: {
         position: 'absolute',
         top: 0,
-        left: 20,
-        right: 20,
+        left: 16,
+        right: 16,
         zIndex: 9999,
         alignItems: 'center',
+    },
+    glowWrapper: {
+        borderRadius: 16,
+        width: width - 32,
     },
     blur: {
         flexDirection: 'row',
         alignItems: 'center',
-        paddingVertical: 12,
-        paddingHorizontal: 16,
+        paddingTop: 12,
+        paddingBottom: 16,
+        paddingHorizontal: 14,
         borderRadius: 16,
         borderWidth: 1,
-        borderColor: 'rgba(255,255,255,0.1)',
         gap: 12,
         overflow: 'hidden',
-        width: width - 40,
     },
     iconContainer: {
         width: 32,
@@ -109,10 +143,27 @@ const styles = StyleSheet.create({
         alignItems: 'center',
         justifyContent: 'center',
     },
-    message: {
+    contentContainer: {
         flex: 1,
+    },
+    message: {
         color: '#fff',
         fontSize: 14,
         fontWeight: '500',
+    },
+    progressContainer: {
+        position: 'absolute',
+        bottom: 0,
+        left: 0,
+        right: 0,
+        height: 3,
+        backgroundColor: 'rgba(255,255,255,0.1)',
+        borderBottomLeftRadius: 16,
+        borderBottomRightRadius: 16,
+        overflow: 'hidden',
+    },
+    progressBar: {
+        height: '100%',
+        borderRadius: 2,
     },
 });

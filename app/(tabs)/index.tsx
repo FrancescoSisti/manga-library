@@ -1,4 +1,4 @@
-import { deleteSeries, getSeries, Series } from '@/components/database';
+import { deleteSeries, getLibraryStats, getSeries, LibraryStats, Series } from '@/components/database';
 import { Toast } from '@/components/Toast';
 import { Colors } from '@/constants/Colors';
 import { Ionicons } from '@expo/vector-icons';
@@ -19,6 +19,7 @@ const AnimatedTouchable = Animated.createAnimatedComponent(TouchableOpacity);
 export default function HomeScreen() {
   const theme = useTheme();
   const [series, setSeries] = useState<Series[]>([]);
+  const [stats, setStats] = useState<LibraryStats>({ totalOwnedVolumes: 0, totalVolumes: 0, completedSeries: 0, totalSeries: 0 });
   const [deleteModal, setDeleteModal] = useState<{ visible: boolean; item: Series | null }>({ visible: false, item: null });
   const [toast, setToast] = useState<{ visible: boolean; message: string; type: 'success' | 'error' | 'info' | 'wishlist' }>({ visible: false, message: '', type: 'success' });
 
@@ -31,6 +32,7 @@ export default function HomeScreen() {
   const loadSeries = () => {
     const data = getSeries();
     setSeries(data);
+    setStats(getLibraryStats());
   };
 
   const showToast = (message: string, type: 'success' | 'error' | 'info' | 'wishlist' = 'success') => {
@@ -71,7 +73,7 @@ export default function HomeScreen() {
         <Text variant="titleSmall" numberOfLines={2} style={styles.title}>{item.title}</Text>
         <View style={styles.metaRow}>
           <View style={styles.badge}>
-            <Text style={styles.badgeText}>{item.totalVolumes || '?'}</Text>
+            <Text style={styles.badgeText}>{item.totalVolumes || '∞'}</Text>
           </View>
           <Text variant="labelSmall" style={styles.statusText}>
             {item.status === 'Publishing' ? 'ONGOING' : item.status?.toUpperCase() || ''}
@@ -153,6 +155,29 @@ export default function HomeScreen() {
             <Ionicons name="library" size={24} color={Colors.neon.primary} />
           </View>
         </View>
+
+        {/* Stats Section */}
+        {series.length > 0 && (
+          <View style={styles.statsContainer}>
+            <View style={styles.statBox}>
+              <Ionicons name="book" size={20} color={Colors.neon.accent} />
+              <Text style={styles.statNumber}>{stats.totalOwnedVolumes}</Text>
+              <Text style={styles.statLabel}>Volumi</Text>
+            </View>
+            <View style={styles.statBox}>
+              <Ionicons name="checkmark-circle" size={20} color="#22C55E" />
+              <Text style={styles.statNumber}>{stats.completedSeries}</Text>
+              <Text style={styles.statLabel}>Complete</Text>
+            </View>
+            <View style={styles.statBox}>
+              <Ionicons name="trending-up" size={20} color={Colors.neon.primary} />
+              <Text style={styles.statNumber}>
+                {stats.totalVolumes > 0 ? Math.round((stats.totalOwnedVolumes / stats.totalVolumes) * 100) : 0}%
+              </Text>
+              <Text style={styles.statLabel}>Progress</Text>
+            </View>
+          </View>
+        )}
       </Animated.View>
 
       <FlatList
@@ -370,5 +395,30 @@ const styles = StyleSheet.create({
   deleteText: {
     color: '#fff',
     fontWeight: '600',
+  },
+  statsContainer: {
+    flexDirection: 'row',
+    marginTop: 20,
+    gap: 12,
+  },
+  statBox: {
+    flex: 1,
+    backgroundColor: 'rgba(255,255,255,0.05)',
+    borderRadius: 14,
+    padding: 14,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.08)',
+  },
+  statNumber: {
+    color: '#fff',
+    fontSize: 20,
+    fontWeight: 'bold',
+    marginTop: 8,
+  },
+  statLabel: {
+    color: '#888',
+    fontSize: 11,
+    marginTop: 4,
   },
 });

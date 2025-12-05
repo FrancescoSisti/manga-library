@@ -32,8 +32,8 @@ export default function WishlistScreen() {
         setToast({ visible: true, message, type });
     };
 
-    const handleRemove = (malId: number, title: string) => {
-        removeFromWishlist(malId);
+    const handleRemove = (mangadexId: string, title: string) => {
+        removeFromWishlist(mangadexId);
         loadWishlist();
         showToast(`${title} removed from wishlist`, 'info');
     };
@@ -41,7 +41,7 @@ export default function WishlistScreen() {
     const handleAddToLibrary = (item: WishlistItemType) => {
         try {
             addSeries(item.title, item.author, item.totalVolumes, item.status, item.coverImage);
-            removeFromWishlist(item.malId);
+            removeFromWishlist(item.mangadexId);
             loadWishlist();
             showToast(`${item.title} added to library!`, 'success');
         } catch (error) {
@@ -65,7 +65,7 @@ export default function WishlistScreen() {
             <View style={styles.cardActions}>
                 <TouchableOpacity
                     style={styles.removeBtn}
-                    onPress={() => handleRemove(item.malId, item.title)}
+                    onPress={() => handleRemove(item.mangadexId, item.title)}
                 >
                     <Ionicons name="close" size={16} color="#fff" />
                 </TouchableOpacity>
@@ -73,7 +73,9 @@ export default function WishlistScreen() {
 
             <View style={styles.cardContent}>
                 <Text style={styles.cardTitle} numberOfLines={2}>{item.title}</Text>
-                <Text style={styles.cardMeta}>{item.totalVolumes || '?'} volumes</Text>
+                <Text style={styles.cardMeta}>
+                    {item.totalVolumes ? `${item.totalVolumes} volumes` : 'Ongoing'}
+                </Text>
 
                 <TouchableOpacity
                     style={styles.addLibBtn}

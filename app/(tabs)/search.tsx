@@ -1,4 +1,5 @@
 import { addSeries, addToWishlist, isInLibrary, isInWishlist } from '@/components/database';
+import { getBestVolumeCount } from '@/components/googlebooks';
 import { Toast } from '@/components/Toast';
 import { Colors } from '@/constants/Colors';
 import { Ionicons } from '@expo/vector-icons';
@@ -63,7 +64,6 @@ export default function SearchScreen() {
                 console.error(error);
                 if (lastRequestRef.current === requestId) {
                     setLoading(false);
-                    // Don't show error for aborted requests
                 }
             }
         }, DEBOUNCE_DELAY);
@@ -95,11 +95,16 @@ export default function SearchScreen() {
                 showToast('Already in your library!', 'info');
                 return;
             }
+
             const cover = manga.images?.jpg?.large_image_url || manga.images?.jpg?.image_url;
             const author = manga.authors?.[0]?.name || 'Unknown';
             const status = manga.status || 'Unknown';
 
-            await addSeries(manga.title, author, manga.volumes, status, cover);
+            // Fetch volume count from Google Books for ongoing series
+            showToast('Fetching volume info...', 'info');
+            const volumes = await getBestVolumeCount(manga.title, manga.volumes);
+
+            await addSeries(manga.title, author, volumes, status, cover);
             showToast(`${manga.title} added to library!`, 'success');
             if (closeAfter) closeModal();
         } catch (error) {
@@ -110,14 +115,18 @@ export default function SearchScreen() {
 
     const handleAddToWishlist = async (manga: any, closeAfter = false) => {
         try {
-            if (isInWishlist(manga.mal_id)) {
+            if (isInWishlist(manga.mal_id.toString())) {
                 showToast('Already in wishlist!', 'info');
                 return;
             }
+
             const cover = manga.images?.jpg?.large_image_url || manga.images?.jpg?.image_url;
             const author = manga.authors?.[0]?.name || 'Unknown';
 
-            await addToWishlist(manga.mal_id, manga.title, author, manga.volumes, manga.status, cover);
+            // Fetch volume count from Google Books for ongoing series
+            const volumes = await getBestVolumeCount(manga.title, manga.volumes);
+
+            await addToWishlist(manga.mal_id.toString(), manga.title, author, volumes, manga.status, cover);
             showToast(`Added to wishlist!`, 'wishlist');
             if (closeAfter) closeModal();
         } catch (error) {
@@ -153,7 +162,9 @@ export default function SearchScreen() {
                             </Text>
                             <View style={styles.metaRow}>
                                 <View style={styles.badge}>
-                                    <Text style={styles.badgeText}>{item.volumes || '?'} vols</Text>
+                                    <Text style={styles.badgeText}>
+                                        {item.volumes ? `${item.volumes} vols` : 'Ongoing'}
+                                    </Text>
                                 </View>
                                 <View style={[styles.badge, styles.badgeSecondary]}>
                                     <Text style={[styles.badgeText, { color: Colors.neon.secondary }]}>{item.status}</Text>
@@ -236,7 +247,9 @@ export default function SearchScreen() {
                                     <View style={styles.modalStats}>
                                         <View style={styles.statItem}>
                                             <Ionicons name="book" size={16} color={Colors.neon.accent} />
-                                            <Text style={styles.statText}>{manga.volumes || '?'} Volumes</Text>
+                                            <Text style={styles.statText}>
+                                                {manga.volumes ? `${manga.volumes} Volumes` : 'Ongoing'}
+                                            </Text>
                                         </View>
                                         <View style={styles.statItem}>
                                             <Ionicons name="star" size={16} color="#FFD700" />

@@ -1,10 +1,12 @@
-import { getSeriesById, getVolumes, Series, toggleVolume, Volume } from '@/components/database';
+import { getSeriesById, getVolumes, Series, toggleVolume, updateSeriesVolumes, Volume } from '@/components/database';
+import { getVolumesWithCovers, VolumeInfo } from '@/components/googlebooks';
 import { useLocalSearchParams, useNavigation } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
-import { Image, ScrollView, StyleSheet, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Image, Modal, Pressable, ScrollView, StyleSheet, TextInput, TouchableOpacity, View } from 'react-native';
 import { ProgressBar, Text, useTheme } from 'react-native-paper';
 
 import { Colors } from '@/constants/Colors';
+import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 
 export default function SeriesDetailScreen() {
@@ -13,7 +15,11 @@ export default function SeriesDetailScreen() {
     const navigation = useNavigation();
     const [series, setSeries] = useState<Series | null>(null);
     const [volumes, setVolumes] = useState<Volume[]>([]);
+    const [volumeCovers, setVolumeCovers] = useState<VolumeInfo[]>([]);
+    const [loadingCovers, setLoadingCovers] = useState(false);
     const [ownedCount, setOwnedCount] = useState(0);
+    const [editModal, setEditModal] = useState(false);
+    const [newVolumeCount, setNewVolumeCount] = useState('');
 
     const loadData = useCallback(() => {
         const seriesId = Array.isArray(id) ? Number(id[0]) : Number(id);
@@ -29,6 +35,15 @@ export default function SeriesDetailScreen() {
                 // Calculate owned count
                 const owned = volData.filter((v: any) => v.isOwned === 1).length;
                 setOwnedCount(owned);
+
+                // Load volume covers from Google Books
+                setLoadingCovers(true);
+                getVolumesWithCovers(seriesData.title, seriesData.totalVolumes || 50)
+                    .then(covers => {
+                        setVolumeCovers(covers);
+                        setLoadingCovers(false);
+                    })
+                    .catch(() => setLoadingCovers(false));
             }
         }
     }, [id, navigation]);
@@ -43,6 +58,24 @@ export default function SeriesDetailScreen() {
         loadData(); // Reload to refresh UI
     };
 
+    const handleMarkAll = (owned: boolean) => {
+        const totalVols = series?.totalVolumes || 20;
+        for (let i = 1; i <= totalVols; i++) {
+            toggleVolume(Number(id), i, owned);
+        }
+        loadData();
+    };
+
+    const handleUpdateVolumes = () => {
+        const count = parseInt(newVolumeCount);
+        if (count > 0 && series) {
+            updateSeriesVolumes(series.id, count);
+            setEditModal(false);
+            setNewVolumeCount('');
+            loadData();
+        }
+    };
+
     if (!series) {
         return <View style={styles.container}><Text>Loading...</Text></View>;
     }
@@ -50,17 +83,61 @@ export default function SeriesDetailScreen() {
     // Generate volume grid (assuming max 100 or totalVolumes)
     const totalVols = series.totalVolumes || 20; // Default to 20 if unknown for now
     const grid = Array.from({ length: totalVols }, (_, i) => i + 1);
+    const progress = series.totalVolumes ? ownedCount / series.totalVolumes : 0;
+    const isComplete = ownedCount === totalVols;
 
     return (
         <ScrollView style={[styles.container, { backgroundColor: theme.colors.background }]}>
+            {/* Edit Modal */}
+            <Modal
+                visible={editModal}
+                animationType="fade"
+                transparent={true}
+                onRequestClose={() => setEditModal(false)}
+            >
+                <View style={styles.modalOverlay}>
+                    <Pressable style={styles.modalBackdrop} onPress={() => setEditModal(false)} />
+                    <View style={styles.modalBox}>
+                        <TouchableOpacity style={styles.closeBtn} onPress={() => setEditModal(false)}>
+                            <Ionicons name="close" size={22} color="#888" />
+                        </TouchableOpacity>
+
+                        <Ionicons name="book" size={40} color={Colors.neon.accent} />
+                        <Text variant="titleLarge" style={styles.modalTitle}>Modifica Volumi</Text>
+                        <Text variant="bodyMedium" style={styles.modalSubtitle}>
+                            Inserisci il numero totale di volumi
+                        </Text>
+
+                        <TextInput
+                            style={styles.volumeInput}
+                            value={newVolumeCount}
+                            onChangeText={setNewVolumeCount}
+                            placeholder={String(series.totalVolumes || 20)}
+                            placeholderTextColor="#555"
+                            keyboardType="number-pad"
+                            cursorColor={Colors.neon.primary}
+                        />
+
+                        <TouchableOpacity style={styles.saveBtn} onPress={handleUpdateVolumes}>
+                            <Text style={styles.saveBtnText}>Salva</Text>
+                        </TouchableOpacity>
+                    </View>
+                </View>
+            </Modal>
+
             <View style={styles.header}>
-                <Image source={{ uri: series.coverImage }} style={styles.banner} blurRadius={10} />
+                <Image source={{ uri: series.coverImage }} style={styles.banner} blurRadius={15} />
                 <LinearGradient
-                    colors={['transparent', theme.colors.background]}
+                    colors={['transparent', 'rgba(0,0,0,0.6)', theme.colors.background]}
+                    locations={[0, 0.5, 1]}
                     style={styles.headerGradient}
                 />
                 <View style={styles.headerContent}>
-                    <Image source={{ uri: series.coverImage }} style={styles.poster} />
+                    {/* Cover with glow effect */}
+                    <View style={styles.posterWrapper}>
+                        <View style={styles.posterGlow} />
+                        <Image source={{ uri: series.coverImage }} style={styles.poster} resizeMode="cover" />
+                    </View>
                     <View style={styles.headerText}>
                         <Text variant="headlineSmall" style={styles.title} numberOfLines={2}>{series.title}</Text>
                         <Text variant="titleMedium" style={{ color: Colors.neon.accent }}>{series.author}</Text>
@@ -69,6 +146,12 @@ export default function SeriesDetailScreen() {
                             <Text variant="labelSmall" style={[styles.badge, { backgroundColor: Colors.neon.secondary }]}>
                                 {ownedCount}/{series.totalVolumes || '?'}
                             </Text>
+                            {isComplete && (
+                                <View style={[styles.badge, { backgroundColor: '#22C55E', flexDirection: 'row', alignItems: 'center', gap: 3 }]}>
+                                    <Ionicons name="checkmark-circle" size={12} color="#fff" />
+                                    <Text variant="labelSmall" style={{ color: '#fff' }}>Completa</Text>
+                                </View>
+                            )}
                         </View>
                     </View>
                 </View>
@@ -76,35 +159,100 @@ export default function SeriesDetailScreen() {
 
             <View style={styles.content}>
                 <View style={styles.progressContainer}>
-                    <Text variant="labelMedium" style={{ marginBottom: 5 }}>Collection Progress</Text>
+                    <View style={styles.progressHeader}>
+                        <Text variant="labelMedium" style={{ color: '#aaa' }}>Collection Progress</Text>
+                        <Text variant="labelMedium" style={{ color: Colors.neon.primary, fontWeight: 'bold' }}>
+                            {Math.round(progress * 100)}%
+                        </Text>
+                    </View>
                     <ProgressBar
-                        progress={series.totalVolumes ? ownedCount / series.totalVolumes : 0}
-                        color={Colors.neon.primary}
+                        progress={progress}
+                        color={isComplete ? '#22C55E' : Colors.neon.primary}
                         style={styles.progress}
                     />
                 </View>
 
-                <Text variant="titleMedium" style={styles.sectionTitle}>Volumes</Text>
+                {/* Action Buttons */}
+                <View style={styles.actionButtons}>
+                    <TouchableOpacity
+                        style={[styles.actionBtn, { backgroundColor: 'rgba(34, 197, 94, 0.15)', borderColor: '#22C55E' }]}
+                        onPress={() => handleMarkAll(true)}
+                    >
+                        <Ionicons name="checkmark-done" size={18} color="#22C55E" />
+                        <Text style={[styles.actionBtnText, { color: '#22C55E' }]}>Segna tutti</Text>
+                    </TouchableOpacity>
+
+                    <TouchableOpacity
+                        style={[styles.actionBtn, { backgroundColor: 'rgba(239, 68, 68, 0.15)', borderColor: '#EF4444' }]}
+                        onPress={() => handleMarkAll(false)}
+                    >
+                        <Ionicons name="close" size={18} color="#EF4444" />
+                        <Text style={[styles.actionBtnText, { color: '#EF4444' }]}>Deseleziona</Text>
+                    </TouchableOpacity>
+
+                    <TouchableOpacity
+                        style={[styles.actionBtn, { backgroundColor: 'rgba(34, 211, 238, 0.15)', borderColor: Colors.neon.accent }]}
+                        onPress={() => {
+                            setNewVolumeCount(String(series.totalVolumes || 20));
+                            setEditModal(true);
+                        }}
+                    >
+                        <Ionicons name="pencil" size={16} color={Colors.neon.accent} />
+                        <Text style={[styles.actionBtnText, { color: Colors.neon.accent }]}>Modifica</Text>
+                    </TouchableOpacity>
+                </View>
+
+                <Text variant="titleMedium" style={styles.sectionTitle}>Volumi</Text>
+
+                {loadingCovers && (
+                    <View style={styles.loadingContainer}>
+                        <ActivityIndicator size="small" color={Colors.neon.primary} />
+                        <Text style={styles.loadingText}>Caricamento cover...</Text>
+                    </View>
+                )}
+
                 <View style={styles.grid}>
                     {grid.map(volNum => {
                         const isOwned = volumes.find(v => v.volumeNumber === volNum && v.isOwned === 1);
+                        const coverInfo = volumeCovers.find(c => c.volumeNumber === volNum);
+
                         return (
                             <TouchableOpacity
                                 key={volNum}
                                 activeOpacity={0.7}
                                 style={[
-                                    styles.volBadge,
-                                    {
-                                        backgroundColor: isOwned ? Colors.neon.primary : theme.colors.surface,
-                                        borderColor: isOwned ? Colors.neon.primary : theme.colors.outline
-                                    }
+                                    styles.volumeCard,
+                                    isOwned && styles.volumeCardOwned,
                                 ]}
                                 onPress={() => handleToggleVolume(volNum)}
                             >
-                                <Text style={{
-                                    color: isOwned ? '#fff' : theme.colors.onSurface,
-                                    fontWeight: isOwned ? 'bold' : 'normal'
-                                }}>{volNum}</Text>
+                                {coverInfo?.coverUrl ? (
+                                    <Image
+                                        source={{ uri: coverInfo.coverUrl }}
+                                        style={styles.volumeCover}
+                                        resizeMode="cover"
+                                    />
+                                ) : (
+                                    <View style={[styles.volumeCover, styles.volumePlaceholder]}>
+                                        <Text style={styles.volumePlaceholderText}>{volNum}</Text>
+                                    </View>
+                                )}
+
+                                <LinearGradient
+                                    colors={['transparent', 'rgba(0,0,0,0.9)']}
+                                    style={styles.volumeGradient}
+                                />
+
+                                <View style={styles.volumeInfo}>
+                                    <Text style={styles.volumeNumber}>Vol. {volNum}</Text>
+                                    {isOwned && (
+                                        <View style={styles.ownedBadge}>
+                                            <Ionicons name="checkmark" size={10} color="#fff" />
+                                        </View>
+                                    )}
+                                </View>
+
+                                {isOwned && <View style={styles.volumeGlow} />}
                             </TouchableOpacity>
                         )
                     })}
@@ -119,13 +267,13 @@ const styles = StyleSheet.create({
         flex: 1,
     },
     header: {
-        height: 350,
+        height: 380,
         position: 'relative',
         justifyContent: 'flex-end',
     },
     banner: {
         ...StyleSheet.absoluteFillObject,
-        opacity: 0.6,
+        opacity: 0.5,
     },
     headerGradient: {
         ...StyleSheet.absoluteFillObject,
@@ -135,16 +283,25 @@ const styles = StyleSheet.create({
         padding: 20,
         alignItems: 'flex-end',
     },
+    posterWrapper: {
+        position: 'relative',
+    },
+    posterGlow: {
+        position: 'absolute',
+        top: 10,
+        left: 10,
+        right: -10,
+        bottom: -10,
+        backgroundColor: Colors.neon.primary,
+        borderRadius: 12,
+        opacity: 0.3,
+    },
     poster: {
-        width: 120,
-        height: 180,
-        borderRadius: 8,
+        width: 130,
+        height: 195,
+        borderRadius: 10,
         borderWidth: 2,
-        borderColor: 'rgba(255,255,255,0.1)',
-        shadowColor: '#000',
-        shadowOpacity: 0.5,
-        shadowRadius: 10,
-        elevation: 8,
+        borderColor: 'rgba(255,255,255,0.15)',
     },
     headerText: {
         flex: 1,
@@ -161,30 +318,57 @@ const styles = StyleSheet.create({
     },
     badgeContainer: {
         flexDirection: 'row',
+        flexWrap: 'wrap',
         marginTop: 10,
         gap: 8,
     },
     badge: {
         backgroundColor: 'rgba(0,0,0,0.6)',
         color: '#fff',
-        paddingHorizontal: 8,
-        paddingVertical: 2,
-        borderRadius: 4,
+        paddingHorizontal: 10,
+        paddingVertical: 4,
+        borderRadius: 6,
         overflow: 'hidden',
     },
     content: {
         padding: 20,
     },
     progressContainer: {
-        marginBottom: 30,
+        marginBottom: 20,
         backgroundColor: 'rgba(255,255,255,0.05)',
-        padding: 15,
-        borderRadius: 12,
+        padding: 16,
+        borderRadius: 14,
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.08)',
+    },
+    progressHeader: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        marginBottom: 10,
     },
     progress: {
-        height: 8,
-        borderRadius: 4,
+        height: 10,
+        borderRadius: 5,
         backgroundColor: 'rgba(255,255,255,0.1)',
+    },
+    actionButtons: {
+        flexDirection: 'row',
+        gap: 10,
+        marginBottom: 25,
+    },
+    actionBtn: {
+        flex: 1,
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: 5,
+        paddingVertical: 12,
+        borderRadius: 12,
+        borderWidth: 1,
+    },
+    actionBtnText: {
+        fontSize: 12,
+        fontWeight: '600',
     },
     sectionTitle: {
         marginBottom: 15,
@@ -194,14 +378,172 @@ const styles = StyleSheet.create({
     grid: {
         flexDirection: 'row',
         flexWrap: 'wrap',
-        gap: 8,
+        gap: 10,
+        paddingBottom: 40,
     },
     volBadge: {
-        width: 45,
-        height: 45,
-        borderRadius: 8,
+        width: 48,
+        height: 48,
+        borderRadius: 10,
         justifyContent: 'center',
         alignItems: 'center',
+        borderWidth: 1.5,
+    },
+    // Modal styles
+    modalOverlay: {
+        flex: 1,
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+    modalBackdrop: {
+        ...StyleSheet.absoluteFillObject,
+        backgroundColor: 'rgba(0, 0, 0, 0.85)',
+    },
+    modalBox: {
+        backgroundColor: Colors.neon.surface,
+        borderRadius: 24,
+        padding: 28,
+        margin: 30,
+        alignItems: 'center',
         borderWidth: 1,
-    }
+        borderColor: '#2a2a35',
+        position: 'relative',
+        width: 300,
+    },
+    closeBtn: {
+        position: 'absolute',
+        top: 12,
+        right: 12,
+        width: 32,
+        height: 32,
+        borderRadius: 16,
+        backgroundColor: 'rgba(255,255,255,0.05)',
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    modalTitle: {
+        color: '#fff',
+        fontWeight: 'bold',
+        marginTop: 16,
+        textAlign: 'center',
+    },
+    modalSubtitle: {
+        color: '#888',
+        textAlign: 'center',
+        marginTop: 8,
+    },
+    volumeInput: {
+        backgroundColor: 'rgba(255,255,255,0.08)',
+        borderWidth: 1.5,
+        borderColor: '#3a3a45',
+        borderRadius: 12,
+        paddingHorizontal: 20,
+        paddingVertical: 14,
+        color: '#fff',
+        fontSize: 18,
+        fontWeight: 'bold',
+        textAlign: 'center',
+        width: '100%',
+        marginTop: 20,
+    },
+    saveBtn: {
+        backgroundColor: Colors.neon.primary,
+        borderRadius: 12,
+        paddingVertical: 14,
+        paddingHorizontal: 40,
+        marginTop: 20,
+        width: '100%',
+    },
+    saveBtnText: {
+        color: '#fff',
+        fontWeight: '600',
+        fontSize: 16,
+        textAlign: 'center',
+    },
+    // Volume covers styles
+    loadingContainer: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: 10,
+        marginBottom: 15,
+        padding: 12,
+        backgroundColor: 'rgba(255,255,255,0.05)',
+        borderRadius: 10,
+    },
+    loadingText: {
+        color: '#888',
+        fontSize: 13,
+    },
+    volumeCard: {
+        width: 100,
+        height: 150,
+        borderRadius: 12,
+        overflow: 'hidden',
+        backgroundColor: Colors.neon.surface,
+        borderWidth: 2,
+        borderColor: 'transparent',
+        position: 'relative',
+    },
+    volumeCardOwned: {
+        borderColor: Colors.neon.primary,
+    },
+    volumeCover: {
+        width: '100%',
+        height: '100%',
+    },
+    volumePlaceholder: {
+        backgroundColor: '#1a1a25',
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+    volumePlaceholderText: {
+        color: '#444',
+        fontSize: 28,
+        fontWeight: 'bold',
+    },
+    volumeGradient: {
+        position: 'absolute',
+        bottom: 0,
+        left: 0,
+        right: 0,
+        height: 50,
+    },
+    volumeInfo: {
+        position: 'absolute',
+        bottom: 6,
+        left: 6,
+        right: 6,
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+    },
+    volumeNumber: {
+        color: '#fff',
+        fontSize: 11,
+        fontWeight: 'bold',
+        textShadowColor: 'rgba(0,0,0,0.8)',
+        textShadowOffset: { width: 0, height: 1 },
+        textShadowRadius: 3,
+    },
+    ownedBadge: {
+        backgroundColor: Colors.neon.primary,
+        width: 18,
+        height: 18,
+        borderRadius: 9,
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+    volumeGlow: {
+        position: 'absolute',
+        top: -2,
+        left: -2,
+        right: -2,
+        bottom: -2,
+        borderRadius: 14,
+        borderWidth: 2,
+        borderColor: Colors.neon.primary,
+        opacity: 0.5,
+    },
 });
+
