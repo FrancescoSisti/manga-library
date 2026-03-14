@@ -1,5 +1,6 @@
-import { deleteSeries, getSeriesById, getVolumes, Series, toggleVolume, toggleVolumeRead, updateSeriesInfo, updateSeriesVolumes, Volume } from '@/components/database';
+import { deleteSeries, getSeriesById, getVolumes, Series, toggleVolume, toggleVolumeRead, updateSeriesCover, updateSeriesInfo, updateSeriesVolumes, Volume } from '@/components/database';
 import { getBestVolumeCount, getVolumesWithCovers, VolumeInfo } from '@/components/googlebooks';
+import { getAniListCover } from '@/components/anilist';
 import { CoverImage } from '@/components/CoverImage';
 import { Toast } from '@/components/Toast';
 import axios from 'axios';
@@ -19,6 +20,7 @@ export default function SeriesDetailScreen() {
     const navigation = useNavigation();
     const router = useRouter();
     const [series, setSeries] = useState<Series | null>(null);
+    const [resolvedCover, setResolvedCover] = useState<string | null>(null);
     const [volumes, setVolumes] = useState<Volume[]>([]);
     const [volumeCovers, setVolumeCovers] = useState<VolumeInfo[]>([]);
     const [loadingCovers, setLoadingCovers] = useState(false);
@@ -48,6 +50,18 @@ export default function SeriesDetailScreen() {
                 // Calculate owned count
                 const owned = volData.filter((v: any) => v.isOwned === 1).length;
                 setOwnedCount(owned);
+
+                // If series has no cover, try to fetch one from AniList
+                if (!seriesData.coverImage) {
+                    getAniListCover(seriesData.title).then(url => {
+                        if (url) {
+                            setResolvedCover(url);
+                            updateSeriesCover(seriesData.id, url);
+                        }
+                    });
+                } else {
+                    setResolvedCover(seriesData.coverImage);
+                }
 
                 // Load volume covers from Google Books
                 setLoadingCovers(true);
@@ -187,7 +201,7 @@ export default function SeriesDetailScreen() {
                 </View>
 
                 <View style={styles.header}>
-                    <CoverImage uri={series.coverImage} style={styles.banner} blurRadius={15} />
+                    <CoverImage uri={resolvedCover} style={styles.banner} blurRadius={15} />
                     <LinearGradient
                         colors={['transparent', 'rgba(0,0,0,0.6)', theme.colors.background]}
                         locations={[0, 0.5, 1]}
@@ -197,7 +211,7 @@ export default function SeriesDetailScreen() {
                         {/* Cover with glow effect */}
                         <View style={styles.posterWrapper}>
                             <View style={styles.posterGlow} />
-                            <CoverImage uri={series.coverImage} style={styles.poster} resizeMode="cover" iconSize={40} />
+                            <CoverImage uri={resolvedCover} style={styles.poster} resizeMode="cover" iconSize={40} />
                         </View>
                         <View style={styles.headerText}>
                             <Text variant="headlineSmall" style={styles.title} numberOfLines={2}>{series.title}</Text>
@@ -285,6 +299,15 @@ export default function SeriesDetailScreen() {
                         <View style={styles.loadingContainer}>
                             <ActivityIndicator size="small" color={Colors.neon.primary} />
                             <Text style={styles.loadingText}>Loading covers...</Text>
+                        </View>
+                    )}
+
+                    {!loadingCovers && (
+                        <View style={styles.coverDisclaimer}>
+                            <Ionicons name="information-circle-outline" size={13} color="#444" />
+                            <Text style={styles.coverDisclaimerText}>
+                                Covers are sourced from Google Books, AniList and MangaDex. If a cover is missing, it's not available on any of these sources.
+                            </Text>
                         </View>
                     )}
 
@@ -598,6 +621,19 @@ const styles = StyleSheet.create({
     volumesHint: {
         color: '#444',
         fontSize: 11,
+    },
+    coverDisclaimer: {
+        flexDirection: 'row',
+        alignItems: 'flex-start',
+        gap: 6,
+        marginBottom: 12,
+        paddingHorizontal: 2,
+    },
+    coverDisclaimerText: {
+        flex: 1,
+        color: '#444',
+        fontSize: 11,
+        lineHeight: 16,
     },
     progressStats: {
         flexDirection: 'row',

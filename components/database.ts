@@ -101,6 +101,10 @@ export const updateSeriesVolumes = (id: number, totalVolumes: number) => {
     return db.runSync('UPDATE Series SET totalVolumes = ? WHERE id = ?', totalVolumes, id);
 };
 
+export const updateSeriesCover = (id: number, coverImage: string) => {
+    return db.runSync('UPDATE Series SET coverImage = ? WHERE id = ?', coverImage, id);
+};
+
 export const updateSeriesInfo = (id: number, totalVolumes: number | null, description: string | null) => {
     return db.runSync(
         'UPDATE Series SET totalVolumes = ?, description = ? WHERE id = ?',

@@ -1,18 +1,18 @@
 import { getCached, setCached } from '@/components/apiCache';
+import { CoverImage } from '@/components/CoverImage';
 import { addSeries, addToWishlist, isInLibrary, isInWishlist } from '@/components/database';
 import { getBestVolumeCount } from '@/components/googlebooks';
+import { searchManga, SimplifiedManga } from '@/components/mangadex';
 import { SkeletonSearchCard } from '@/components/SkeletonCard';
 import { Toast } from '@/components/Toast';
 import { Colors } from '@/constants/Colors';
 import { Ionicons } from '@expo/vector-icons';
-import axios from 'axios';
 import * as Haptics from 'expo-haptics';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useEffect, useRef, useState } from 'react';
 import {
     Dimensions,
     FlatList,
-    Image,
     Keyboard,
     Pressable,
     Modal as RNModal,
@@ -33,9 +33,9 @@ export default function SearchScreen() {
     const theme = useTheme();
     const [query, setQuery] = useState('');
     const [loading, setLoading] = useState(false);
-    const [results, setResults] = useState<any[]>([]);
+    const [results, setResults] = useState<SimplifiedManga[]>([]);
     const [toast, setToast] = useState<{ visible: boolean; message: string; type: 'success' | 'error' | 'info' | 'wishlist' }>({ visible: false, message: '', type: 'success' });
-    const [previewModal, setPreviewModal] = useState<{ visible: boolean; manga: any | null }>({ visible: false, manga: null });
+    const [previewModal, setPreviewModal] = useState<{ visible: boolean; manga: SimplifiedManga | null }>({ visible: false, manga: null });
 
     // Ref to track the latest request to avoid race conditions
     const lastRequestRef = useRef<number>(0);
@@ -55,8 +55,8 @@ export default function SearchScreen() {
 
         const timeoutId = setTimeout(async () => {
             try {
-                const cacheKey = `jikan:${query.trim().toLowerCase()}`;
-                const cached = getCached<any[]>(cacheKey);
+                const cacheKey = `mangadex:${query.trim().toLowerCase()}`;
+                const cached = getCached<SimplifiedManga[]>(cacheKey);
 
                 if (cached) {
                     if (lastRequestRef.current === requestId) {
@@ -66,8 +66,7 @@ export default function SearchScreen() {
                     return;
                 }
 
-                const response = await axios.get(`https://api.jikan.moe/v4/manga?q=${encodeURIComponent(query)}&limit=15`);
-                const data = response.data.data || [];
+                const data = await searchManga(query.trim(), 20);
                 setCached(cacheKey, data);
 
                 // Only update if this is still the latest request
@@ -104,22 +103,17 @@ export default function SearchScreen() {
         setPreviewModal({ visible: false, manga: null });
     };
 
-    const handleAddSeries = async (manga: any, closeAfter = false) => {
+    const handleAddSeries = async (manga: SimplifiedManga, closeAfter = false) => {
         try {
             if (isInLibrary(manga.title)) {
                 showToast('Already in your library!', 'info');
                 return;
             }
 
-            const cover = manga.images?.jpg?.large_image_url || manga.images?.jpg?.image_url;
-            const author = manga.authors?.[0]?.name || 'Unknown';
-            const status = manga.status || 'Unknown';
-
-            // Fetch volume count from Google Books for ongoing series
             showToast('Fetching volume info...', 'info');
             const volumes = await getBestVolumeCount(manga.title, manga.volumes);
 
-            await addSeries(manga.title, author, volumes, status, cover, manga.synopsis);
+            await addSeries(manga.title, manga.author, volumes, manga.status, manga.coverUrl, manga.description, manga.tags);
             showToast(`${manga.title} added to library!`, 'success');
             if (closeAfter) closeModal();
         } catch (error) {
@@ -128,20 +122,16 @@ export default function SearchScreen() {
         }
     };
 
-    const handleAddToWishlist = async (manga: any, closeAfter = false) => {
+    const handleAddToWishlist = async (manga: SimplifiedManga, closeAfter = false) => {
         try {
-            if (isInWishlist(manga.mal_id.toString())) {
+            if (isInWishlist(manga.id)) {
                 showToast('Already in wishlist!', 'info');
                 return;
             }
 
-            const cover = manga.images?.jpg?.large_image_url || manga.images?.jpg?.image_url;
-            const author = manga.authors?.[0]?.name || 'Unknown';
-
-            // Fetch volume count from Google Books for ongoing series
             const volumes = await getBestVolumeCount(manga.title, manga.volumes);
 
-            await addToWishlist(manga.mal_id.toString(), manga.title, author, volumes, manga.status, cover);
+            await addToWishlist(manga.id, manga.title, manga.author, volumes, manga.status, manga.coverUrl);
             showToast(`Added to wishlist!`, 'wishlist');
             if (closeAfter) closeModal();
         } catch (error) {
@@ -150,69 +140,65 @@ export default function SearchScreen() {
         }
     };
 
-    const renderItem = ({ item, index }: { item: any; index: number }) => {
-        const coverUrl = item.images?.jpg?.large_image_url || item.images?.jpg?.image_url;
+    const renderItem = ({ item, index }: { item: SimplifiedManga; index: number }) => (
+        <TouchableOpacity activeOpacity={0.9} onPress={() => handleOpenPreview(item)}>
+            <Animated.View
+                entering={FadeIn.delay(index * 50).duration(300)}
+                layout={Layout.springify()}
+                style={styles.cardContainer}
+            >
+                <CoverImage uri={item.coverUrl} style={styles.cardImage} resizeMode="cover" iconSize={40} />
+                <LinearGradient
+                    colors={['transparent', 'rgba(0,0,0,0.8)', 'rgba(0,0,0,0.98)']}
+                    locations={[0, 0.5, 1]}
+                    style={styles.cardGradient}
+                />
 
-        return (
-            <TouchableOpacity activeOpacity={0.9} onPress={() => handleOpenPreview(item)}>
-                <Animated.View
-                    entering={FadeIn.delay(index * 50).duration(300)}
-                    layout={Layout.springify()}
-                    style={styles.cardContainer}
-                >
-                    <Image source={{ uri: coverUrl }} style={styles.cardImage} resizeMode="cover" />
-                    <LinearGradient
-                        colors={['transparent', 'rgba(0,0,0,0.8)', 'rgba(0,0,0,0.98)']}
-                        locations={[0, 0.5, 1]}
-                        style={styles.cardGradient}
-                    />
-
-                    <View style={styles.cardContent}>
-                        <View style={styles.cardInfo}>
-                            <Text variant="titleMedium" style={styles.cardTitle} numberOfLines={2}>
-                                {item.title}
-                            </Text>
-                            <Text variant="bodySmall" style={styles.cardAuthor} numberOfLines={1}>
-                                {item.authors?.[0]?.name || 'Unknown Author'}
-                            </Text>
-                            <View style={styles.metaRow}>
-                                <View style={styles.badge}>
-                                    <Text style={styles.badgeText}>
-                                        {item.volumes ? `${item.volumes} vols` : 'Ongoing'}
-                                    </Text>
-                                </View>
-                                <View style={[styles.badge, styles.badgeSecondary]}>
-                                    <Text style={[styles.badgeText, { color: Colors.neon.secondary }]}>{item.status}</Text>
-                                </View>
+                <View style={styles.cardContent}>
+                    <View style={styles.cardInfo}>
+                        <Text variant="titleMedium" style={styles.cardTitle} numberOfLines={2}>
+                            {item.title}
+                        </Text>
+                        <Text variant="bodySmall" style={styles.cardAuthor} numberOfLines={1}>
+                            {item.author}
+                        </Text>
+                        <View style={styles.metaRow}>
+                            <View style={styles.badge}>
+                                <Text style={styles.badgeText}>
+                                    {item.volumes ? `${item.volumes} vols` : 'Ongoing'}
+                                </Text>
+                            </View>
+                            <View style={[styles.badge, styles.badgeSecondary]}>
+                                <Text style={[styles.badgeText, { color: Colors.neon.secondary }]}>{item.status}</Text>
                             </View>
                         </View>
-
-                        <View style={styles.cardActions}>
-                            <TouchableOpacity
-                                style={styles.wishlistBtn}
-                                onPress={() => handleAddToWishlist(item)}
-                                activeOpacity={0.7}
-                                accessibilityLabel={`Add ${item.title} to wishlist`}
-                                accessibilityRole="button"
-                            >
-                                <Ionicons name="heart-outline" size={20} color={Colors.neon.primary} />
-                            </TouchableOpacity>
-                            <TouchableOpacity
-                                style={styles.addBtn}
-                                onPress={() => handleAddSeries(item)}
-                                activeOpacity={0.7}
-                                accessibilityLabel={`Add ${item.title} to library`}
-                                accessibilityRole="button"
-                            >
-                                <Ionicons name="add" size={20} color="#fff" />
-                                <Text style={styles.addBtnText}>Add</Text>
-                            </TouchableOpacity>
-                        </View>
                     </View>
-                </Animated.View>
-            </TouchableOpacity>
-        );
-    };
+
+                    <View style={styles.cardActions}>
+                        <TouchableOpacity
+                            style={styles.wishlistBtn}
+                            onPress={() => handleAddToWishlist(item)}
+                            activeOpacity={0.7}
+                            accessibilityLabel={`Add ${item.title} to wishlist`}
+                            accessibilityRole="button"
+                        >
+                            <Ionicons name="heart-outline" size={20} color={Colors.neon.primary} />
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                            style={styles.addBtn}
+                            onPress={() => handleAddSeries(item)}
+                            activeOpacity={0.7}
+                            accessibilityLabel={`Add ${item.title} to library`}
+                            accessibilityRole="button"
+                        >
+                            <Ionicons name="add" size={20} color="#fff" />
+                            <Text style={styles.addBtnText}>Add</Text>
+                        </TouchableOpacity>
+                    </View>
+                </View>
+            </Animated.View>
+        </TouchableOpacity>
+    );
 
     const manga = previewModal.manga;
 
@@ -244,10 +230,11 @@ export default function SearchScreen() {
                         {manga && (
                             <ScrollView showsVerticalScrollIndicator={false} bounces={false}>
                                 <View style={styles.modalHeader}>
-                                    <Image
-                                        source={{ uri: manga.images?.jpg?.large_image_url }}
+                                    <CoverImage
+                                        uri={manga.coverUrl}
                                         style={styles.modalCover}
                                         resizeMode="cover"
+                                        iconSize={48}
                                     />
                                     <LinearGradient
                                         colors={['transparent', Colors.neon.surface]}
@@ -260,7 +247,7 @@ export default function SearchScreen() {
                                         {manga.title}
                                     </Text>
                                     <Text variant="bodyMedium" style={styles.modalAuthor}>
-                                        {manga.authors?.map((a: any) => a.name).join(', ') || 'Unknown Author'}
+                                        {manga.author}
                                     </Text>
 
                                     <View style={styles.modalStats}>
@@ -270,10 +257,12 @@ export default function SearchScreen() {
                                                 {manga.volumes ? `${manga.volumes} Volumes` : 'Ongoing'}
                                             </Text>
                                         </View>
-                                        <View style={styles.statItem}>
-                                            <Ionicons name="star" size={16} color="#FFD700" />
-                                            <Text style={styles.statText}>{manga.score || 'N/A'}</Text>
-                                        </View>
+                                        {manga.year && (
+                                            <View style={styles.statItem}>
+                                                <Ionicons name="calendar" size={16} color="#888" />
+                                                <Text style={styles.statText}>{manga.year}</Text>
+                                            </View>
+                                        )}
                                         <View style={styles.statItem}>
                                             <View style={[styles.statusDot, { backgroundColor: manga.status === 'Publishing' ? '#22C55E' : Colors.neon.secondary }]} />
                                             <Text style={styles.statText}>{manga.status}</Text>
@@ -284,16 +273,16 @@ export default function SearchScreen() {
 
                                     <Text variant="labelLarge" style={styles.sectionTitle}>Synopsis</Text>
                                     <Text style={styles.synopsis} numberOfLines={6}>
-                                        {manga.synopsis || 'No synopsis available.'}
+                                        {manga.description || 'No synopsis available.'}
                                     </Text>
 
-                                    {manga.genres && manga.genres.length > 0 && (
+                                    {manga.tags && manga.tags.length > 0 && (
                                         <View style={styles.genreSection}>
-                                            <Text variant="labelLarge" style={styles.sectionTitle}>Genres</Text>
+                                            <Text variant="labelLarge" style={styles.sectionTitle}>Tags</Text>
                                             <View style={styles.genreContainer}>
-                                                {manga.genres.slice(0, 5).map((g: any) => (
-                                                    <View key={g.mal_id} style={styles.genreTag}>
-                                                        <Text style={styles.genreText}>{g.name}</Text>
+                                                {manga.tags.slice(0, 6).map((tag) => (
+                                                    <View key={tag} style={styles.genreTag}>
+                                                        <Text style={styles.genreText}>{tag}</Text>
                                                     </View>
                                                 ))}
                                             </View>
@@ -386,7 +375,7 @@ export default function SearchScreen() {
 
             <FlatList
                 data={results}
-                keyExtractor={(item) => item.mal_id.toString()}
+                keyExtractor={(item) => item.id}
                 contentContainerStyle={styles.list}
                 renderItem={renderItem}
                 showsVerticalScrollIndicator={false}

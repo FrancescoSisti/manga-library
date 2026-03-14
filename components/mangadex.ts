@@ -3,13 +3,21 @@ import axios, { AxiosRequestConfig } from 'axios';
 const MANGADEX_API = 'https://api.mangadex.org';
 const COVER_BASE_URL = 'https://uploads.mangadex.org/covers';
 
+const DEFAULT_HEADERS = {
+    'User-Agent': 'MangaLibrary/1.0',
+    'Accept': 'application/json',
+};
+
 // --- Retry Logic Helpers ---
 
 const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
 async function fetchWithRetry<T>(url: string, config: AxiosRequestConfig, retries = 3, backoff = 1000): Promise<T> {
     try {
-        const response = await axios.get<T>(url, config);
+        const response = await axios.get<T>(url, {
+            ...config,
+            headers: { ...DEFAULT_HEADERS, ...config.headers },
+        });
         return response.data;
     } catch (error: any) {
         if (retries > 0) {
@@ -144,15 +152,27 @@ function getDescription(manga: MangaDexManga): string {
  */
 export async function searchManga(query: string, limit: number = 20): Promise<SimplifiedManga[]> {
     try {
-        const data = await fetchWithRetry<MangaDexSearchResult>(`${MANGADEX_API}/manga`, {
-            params: {
-                title: query,
-                limit,
-                'includes[]': ['cover_art', 'author'],
-                contentRating: ['safe', 'suggestive'],
-                order: { relevance: 'desc' },
-            },
+        const params = new URLSearchParams({
+            title: query,
+            limit: String(limit),
+            'order[relevance]': 'desc',
         });
+        params.append('includes[]', 'cover_art');
+        params.append('includes[]', 'author');
+        params.append('contentRating[]', 'safe');
+        params.append('contentRating[]', 'suggestive');
+
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 8000);
+
+        const response = await fetch(`${MANGADEX_API}/manga?${params}`, {
+            signal: controller.signal,
+            headers: DEFAULT_HEADERS,
+        });
+        clearTimeout(timeoutId);
+
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        const data: MangaDexSearchResult = await response.json();
 
         // Map results WITHOUT fetching volume counts (too slow)
         // Volume counts will be fetched when user adds manga to library
@@ -167,9 +187,42 @@ export async function searchManga(query: string, limit: number = 20): Promise<Si
             volumes: null, // Will be fetched when adding to library
             tags: manga.attributes.tags.map(t => t.attributes.name.en),
         }));
-    } catch (error) {
-        console.error('MangaDex search error:', error);
-        throw error;
+    } catch (error: any) {
+        const reason = error?.name === 'AbortError' ? 'timeout (8s)' : error?.message ?? 'unknown';
+        console.warn(`MangaDex unreachable (${reason}), falling back to AniList`);
+        return searchMangaFallback(query, limit);
+    }
+}
+
+/**
+ * Fallback: try AniList first (good covers), then Jikan as last resort
+ */
+async function searchMangaFallback(query: string, limit: number): Promise<SimplifiedManga[]> {
+    try {
+        const { searchAniList } = await import('./anilist');
+        const results = await searchAniList(query, limit);
+        if (results.length > 0) return results;
+    } catch {
+        console.warn('AniList fallback failed, trying Jikan');
+    }
+    try {
+        const response = await axios.get<any>(
+            `https://api.jikan.moe/v4/manga?q=${encodeURIComponent(query)}&limit=${limit}`
+        );
+        const items = response.data.data || [];
+        return items.map((item: any) => ({
+            id: `jikan-${item.mal_id}`,
+            title: item.title,
+            author: item.authors?.[0]?.name || 'Unknown',
+            description: item.synopsis || '',
+            status: item.status || 'Unknown',
+            year: item.published?.prop?.from?.year ?? null,
+            coverUrl: item.images?.jpg?.large_image_url || item.images?.jpg?.image_url || '',
+            volumes: item.volumes ?? null,
+            tags: item.genres?.map((g: any) => g.name) ?? [],
+        }));
+    } catch {
+        return [];
     }
 }
 
