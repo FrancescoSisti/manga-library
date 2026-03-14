@@ -272,14 +272,21 @@ export default function HomeScreen() {
         colors={[Colors.neon.libraryGradient, Colors.neon.background]}
         style={styles.backgroundGradient}
       />
+      {/* Glow orbs */}
+      <View style={styles.glowOrb1} />
+      <View style={styles.glowOrb2} />
+      <View style={styles.glowOrb3} />
 
       <Animated.View entering={FadeIn.duration(600)} style={styles.headerContainer}>
         <View style={styles.headerTop}>
           <View>
-            <Text variant="displaySmall" style={styles.headerTitle}>
-              {isReorderMode ? 'Reorder Library' : 'My Library'}
+            <Text style={styles.headerEyebrow}>
+              {isReorderMode ? 'DRAG TO SORT' : 'MY COLLECTION'}
             </Text>
-            <Text variant="bodyLarge" style={styles.headerSub}>
+            <Text style={styles.headerTitle}>
+              {isReorderMode ? 'Reorder' : 'My Library'}
+            </Text>
+            <Text style={styles.headerSub}>
               {isReorderMode
                 ? 'Long press and drag to reorder'
                 : `${series.length} ${series.length === 1 ? 'Series' : 'Series'} Collected`}
@@ -301,7 +308,7 @@ export default function HomeScreen() {
                 </TouchableOpacity>
               )}
               <View style={styles.headerIcon}>
-                <Ionicons name="library" size={24} color={Colors.neon.primary} />
+                <Ionicons name="library" size={22} color={Colors.neon.primary} />
               </View>
             </View>
           )}
@@ -466,19 +473,39 @@ export default function HomeScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1 },
   backgroundGradient: {
-    position: 'absolute', left: 0, right: 0, top: 0, height: 300,
+    position: 'absolute', left: 0, right: 0, top: 0, height: 320,
+  },
+  glowOrb1: {
+    position: 'absolute', top: 40, right: -50,
+    width: 220, height: 220, borderRadius: 110,
+    backgroundColor: Colors.neon.primary + '12',
+  },
+  glowOrb2: {
+    position: 'absolute', top: 260, left: -70,
+    width: 200, height: 200, borderRadius: 100,
+    backgroundColor: Colors.neon.secondary + '0D',
+  },
+  glowOrb3: {
+    position: 'absolute', top: 520, right: -60,
+    width: 180, height: 180, borderRadius: 90,
+    backgroundColor: Colors.neon.primary + '0A',
   },
   headerContainer: {
     paddingTop: 60, paddingHorizontal: 20, paddingBottom: 20,
   },
   headerTop: {
-    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start',
+    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end',
   },
-  headerTitle: { fontWeight: 'bold', color: '#fff' },
-  headerSub: { color: 'rgba(255,255,255,0.6)', marginTop: 4 },
+  headerEyebrow: {
+    color: Colors.neon.primary, fontSize: 11, fontWeight: '700',
+    letterSpacing: 2, marginBottom: 4, opacity: 0.8,
+  },
+  headerTitle: { color: '#fff', fontSize: 32, fontWeight: '900', letterSpacing: -0.5 },
+  headerSub: { color: 'rgba(255,255,255,0.5)', marginTop: 4, fontSize: 13 },
   headerIcon: {
-    width: 48, height: 48, borderRadius: 24,
-    backgroundColor: 'rgba(217, 70, 239, 0.2)',
+    width: 44, height: 44, borderRadius: 22,
+    backgroundColor: Colors.neon.primary + '15',
+    borderWidth: 1, borderColor: Colors.neon.primary + '30',
     alignItems: 'center', justifyContent: 'center',
   },
   searchContainer: {

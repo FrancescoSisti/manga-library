@@ -1,3 +1,12 @@
+/**
+ * NeonTabBar — "Sliding Color Pill" design
+ *
+ * A single gradient pill slides horizontally between tab positions.
+ * The pill's color transitions between each tab's accent color as it moves.
+ * Active icons turn white (sitting on top of the pill); inactive icons are near-invisible.
+ * The scanner floats above the center gap as an elevated gradient button.
+ */
+
 import { Colors } from '@/constants/Colors';
 import { Ionicons } from '@expo/vector-icons';
 import { BottomTabBarProps } from '@react-navigation/bottom-tabs';
@@ -5,106 +14,136 @@ import * as Haptics from 'expo-haptics';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
 import { useEffect } from 'react';
-import { Dimensions, Platform, StyleSheet, TouchableOpacity, View } from 'react-native';
+import { Dimensions, Platform, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import Animated, {
     interpolate,
+    interpolateColor,
     useAnimatedStyle,
     useSharedValue,
-    withSpring
+    withSpring,
 } from 'react-native-reanimated';
 
-// Screen width for calculations
-const { width: SCREEN_WIDTH } = Dimensions.get('window');
+// ─── Layout constants ─────────────────────────────────────────────────────────
 
-// Constants for layout
-const TAB_BAR_MARGIN = 20;
-const TAB_BAR_WIDTH = SCREEN_WIDTH - (TAB_BAR_MARGIN * 2);
-const TAB_BAR_HEIGHT = 72;
-const BOTTOM_OFFSET = 20;
+const SW = Dimensions.get('window').width;
+const BAR_MARGIN  = 16;
+const BAR_W       = SW - BAR_MARGIN * 2;
+const BAR_H       = 64;
+const BOTTOM      = 20;
+const N_SLOTS     = 5;            // 4 tabs + 1 scanner gap
+const SLOT_W      = BAR_W / N_SLOTS;
+const PILL_W      = SLOT_W - 10;  // 5 px gap on each side
+const PILL_H      = BAR_H - 16;   // 8 px top/bottom
 
-// Animation Config
-const SPRING_CONFIG = {
-    damping: 15,
-    stiffness: 150,
-    mass: 0.6,
+const SPRING = { damping: 24, stiffness: 260, mass: 0.45 };
+
+// ─── Per-tab config ───────────────────────────────────────────────────────────
+
+const ROUTE_SLOT: Record<string, number> = {
+    index:    0,
+    search:   1,
+    stats:    3,
+    wishlist: 4,
 };
 
-// --- Subcomponents ---
+const ROUTE_COLOR: Record<string, string> = {
+    index:    Colors.neon.primary,
+    search:   Colors.neon.secondary,
+    stats:    Colors.neon.accent,
+    wishlist: '#F43F5E',
+};
 
-function TabIcon({
-    name,
+const ROUTE_ICON: Record<string, keyof typeof Ionicons.glyphMap> = {
+    index:    'home',
+    search:   'search',
+    stats:    'bar-chart',
+    wishlist: 'heart',
+};
+
+const ROUTE_LABEL: Record<string, string> = {
+    index:    'Library',
+    search:   'Search',
+    stats:    'Stats',
+    wishlist: 'Wishlist',
+};
+
+const TAB_ROUTES = ['index', 'search', 'stats', 'wishlist'] as const;
+
+/** Leftmost X of the pill when centered in a given slot */
+function pillX(route: string) {
+    return ROUTE_SLOT[route] * SLOT_W + 5;
+}
+
+// Ordered x-positions & colors for interpolateColor
+const INTERP_X      = TAB_ROUTES.map(pillX);          // [x0, x1, x2, x3]
+const INTERP_COLORS = TAB_ROUTES.map(r => ROUTE_COLOR[r]); // matching colors
+
+// ─── Tab item (stateless — pill handles the "active" visual) ──────────────────
+
+function TabItem({
+    route,
     focused,
-    label
+    onPress,
 }: {
-    name: keyof typeof Ionicons.glyphMap;
+    route: string;
     focused: boolean;
-    label: string
+    onPress: () => void;
 }) {
-    const animation = useSharedValue(0);
-
-    useEffect(() => {
-        animation.value = withSpring(focused ? 1 : 0, SPRING_CONFIG);
-    }, [focused]);
-
-    const animatedStyle = useAnimatedStyle(() => {
-        const translateY = interpolate(animation.value, [0, 1], [0, -3]);
-        const scale = interpolate(animation.value, [0, 1], [1, 1.1]);
-        return {
-            transform: [{ translateY }, { scale }],
-        };
-    });
-
-    const dotStyle = useAnimatedStyle(() => ({
-        opacity: animation.value,
-        transform: [{ scale: animation.value }],
-    }));
+    const icon      = ROUTE_ICON[route];
+    const label     = ROUTE_LABEL[route];
+    const accentCol = ROUTE_COLOR[route];
 
     return (
-        <View style={styles.tabInner}>
-            <Animated.View style={animatedStyle}>
-                <Ionicons
-                    name={focused ? name : (`${name}-outline` as any)}
-                    size={24}
-                    color={focused ? Colors.neon.primary : 'rgba(255, 255, 255, 0.4)'}
-                />
-            </Animated.View>
-            <Animated.View style={[styles.activeDot, dotStyle]} />
-        </View>
+        <TouchableOpacity
+            style={styles.tabItem}
+            onPress={onPress}
+            activeOpacity={0.75}
+            accessibilityRole="tab"
+            accessibilityState={{ selected: focused }}
+        >
+            <Ionicons
+                name={focused ? icon : (`${icon}-outline` as any)}
+                size={22}
+                color={focused ? '#fff' : 'rgba(255,255,255,0.18)'}
+            />
+            <Text
+                style={[
+                    styles.tabLabel,
+                    { color: focused ? accentCol : 'rgba(255,255,255,0.15)' },
+                ]}
+                numberOfLines={1}
+            >
+                {label}
+            </Text>
+        </TouchableOpacity>
     );
 }
+
+// ─── Scanner button ───────────────────────────────────────────────────────────
 
 function ScannerButton({ onPress }: { onPress: () => void }) {
     const scale = useSharedValue(1);
 
-    const handlePressIn = () => {
-        scale.value = withSpring(0.9, { damping: 10 });
-    };
+    const pressIn  = () => { scale.value = withSpring(0.86, { damping: 10 }); };
+    const pressOut = () => { scale.value = withSpring(1.0, { damping: 10 }); onPress(); };
 
-    const handlePressOut = () => {
-        scale.value = withSpring(1, { damping: 10 });
-        onPress();
-    };
-
-    const animatedStyle = useAnimatedStyle(() => ({
+    const anim = useAnimatedStyle(() => ({
         transform: [{ scale: scale.value }],
     }));
 
     return (
-        <View style={styles.scannerContainer}>
-            <TouchableOpacity
-                onPressIn={handlePressIn}
-                onPressOut={handlePressOut}
-                activeOpacity={1}
-                style={styles.scannerTouch}
-            >
-                <Animated.View style={[styles.scannerCircle, animatedStyle]}>
+        <View style={styles.scannerWrap}>
+            {/* Pulsing outer ring */}
+            <View style={styles.scannerRing} />
+            <TouchableOpacity onPressIn={pressIn} onPressOut={pressOut} activeOpacity={1}>
+                <Animated.View style={[styles.scannerBtn, anim]}>
                     <LinearGradient
                         colors={[Colors.neon.primary, Colors.neon.secondary]}
                         start={{ x: 0, y: 0 }}
                         end={{ x: 1, y: 1 }}
-                        style={styles.scannerGradient}
+                        style={styles.scannerGrad}
                     >
-                        <Ionicons name="scan" size={30} color="#FFF" />
+                        <Ionicons name="scan-outline" size={22} color="#fff" />
                     </LinearGradient>
                 </Animated.View>
             </TouchableOpacity>
@@ -112,198 +151,199 @@ function ScannerButton({ onPress }: { onPress: () => void }) {
     );
 }
 
+// ─── Main component ───────────────────────────────────────────────────────────
 
-// --- Main Component ---
+export function NeonTabBar({ state, navigation }: BottomTabBarProps) {
+    const router      = useRouter();
+    const activeRoute = state.routes[state.index].name;
 
-export function NeonTabBar({ state, descriptors, navigation }: BottomTabBarProps) {
-    const router = useRouter();
+    // Shared value drives both position AND color of the pill
+    const px = useSharedValue(pillX(activeRoute));
 
-    const handleTabPress = (routeName: string, routeKey: string, isFocused: boolean) => {
-        if (Platform.OS !== 'web') {
-            Haptics.selectionAsync();
-        }
+    useEffect(() => {
+        px.value = withSpring(pillX(activeRoute), SPRING);
+    }, [activeRoute]);
 
-        const event = navigation.emit({
-            type: 'tabPress',
-            target: routeKey,
-            canPreventDefault: true,
-        });
+    const pillStyle = useAnimatedStyle(() => ({
+        transform: [{ translateX: px.value }],
+        backgroundColor: interpolateColor(px.value, INTERP_X, INTERP_COLORS),
+    }));
 
-        if (!isFocused && !event.defaultPrevented) {
-            navigation.navigate(routeName);
-        }
+    // Subtle glow beneath the pill — same color, blurred/opaque
+    const glowStyle = useAnimatedStyle(() => ({
+        transform: [{ translateX: px.value }],
+        shadowColor: interpolateColor(px.value, INTERP_X, INTERP_COLORS),
+    }));
+
+    const press = (name: string, key: string, focused: boolean) => {
+        if (Platform.OS !== 'web') Haptics.selectionAsync();
+        const evt = navigation.emit({ type: 'tabPress', target: key, canPreventDefault: true });
+        if (!focused && !evt.defaultPrevented) navigation.navigate(name);
     };
 
-    const handleScannerPress = () => {
-        if (Platform.OS !== 'web') {
-            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-        }
-        router.push('/scanner');
-    };
+    const idx = (name: string) => state.routes.findIndex(r => r.name === name);
 
     return (
-        <View style={styles.rootContainer}>
-            {/* The Glass Bar Background */}
-            <View style={styles.glassBar}>
+        <View style={styles.root}>
+            {/* ── Bar ─────────────────────────────────── */}
+            <View style={styles.bar}>
+                {/* Background */}
                 <LinearGradient
-                    colors={['rgba(20, 20, 23, 0.95)', 'rgba(30, 30, 35, 0.98)']}
-                    start={{ x: 0, y: 0 }}
-                    end={{ x: 0, y: 1 }}
-                    style={styles.glassGradient}
+                    colors={['rgba(13,13,17,0.97)', 'rgba(7,7,10,0.99)']}
+                    style={StyleSheet.absoluteFill}
                 />
+                {/* 1-px top highlight */}
+                <View style={styles.topEdge} />
 
-                {/* 1px Top highlight simulates glass edge */}
-                <View style={styles.glassHighlight} />
+                {/* Sliding pill — behind icons via z-order */}
+                <View style={styles.pillLayer} pointerEvents="none">
+                    {/* Glow shadow beneath pill */}
+                    <Animated.View style={[styles.pillGlow, glowStyle]} />
+                    {/* The pill itself */}
+                    <Animated.View style={[styles.pill, pillStyle]} />
+                </View>
 
-                {/* Grid Layout Container */}
-                <View style={styles.gridContainer}>
-                    {/* Slot 1: HOME */}
-                    <TouchableOpacity
-                        style={styles.gridItem}
-                        onPress={() => handleTabPress('index', state.routes[0].key, state.index === 0)}
-                    >
-                        <TabIcon name="home" label="Home" focused={state.index === 0} />
-                    </TouchableOpacity>
-
-                    {/* Slot 2: SEARCH */}
-                    <TouchableOpacity
-                        style={styles.gridItem}
-                        onPress={() => handleTabPress('search', state.routes[1].key, state.index === 1)}
-                    >
-                        <TabIcon name="search" label="Cerca" focused={state.index === 1} />
-                    </TouchableOpacity>
-
-                    {/* Slot 3: EMPTY (Gap for Scanner) */}
-                    <View style={styles.gridItem} pointerEvents="none" />
-
-                    {/* Slot 4: STATS */}
-                    <TouchableOpacity
-                        style={styles.gridItem}
-                        onPress={() => handleTabPress('stats', state.routes[state.routes.findIndex(r => r.name === 'stats')].key, state.index === state.routes.findIndex(r => r.name === 'stats'))}
-                    >
-                        <TabIcon name="bar-chart" label="Stats" focused={state.index === state.routes.findIndex(r => r.name === 'stats')} />
-                    </TouchableOpacity>
-
-                    {/* Slot 5: WISHLIST (Moved to end for symmetry) */}
-                    <TouchableOpacity
-                        style={styles.gridItem}
-                        onPress={() => handleTabPress('wishlist', state.routes[state.routes.findIndex(r => r.name === 'wishlist')].key, state.index === state.routes.findIndex(r => r.name === 'wishlist'))}
-                    >
-                        <TabIcon name="heart" label="Wishlist" focused={state.index === state.routes.findIndex(r => r.name === 'wishlist')} />
-                    </TouchableOpacity>
+                {/* Tab grid */}
+                <View style={styles.grid}>
+                    <TabItem route="index"    focused={state.index === 0}            onPress={() => press('index',    state.routes[0].key,            state.index === 0)} />
+                    <TabItem route="search"   focused={state.index === 1}            onPress={() => press('search',   state.routes[1].key,            state.index === 1)} />
+                    {/* Scanner gap */}
+                    <View style={styles.scannerGap} />
+                    <TabItem route="stats"    focused={state.index === idx('stats')}    onPress={() => press('stats',    state.routes[idx('stats')].key,    state.index === idx('stats'))} />
+                    <TabItem route="wishlist" focused={state.index === idx('wishlist')} onPress={() => press('wishlist', state.routes[idx('wishlist')].key, state.index === idx('wishlist'))} />
                 </View>
             </View>
 
-            {/* Floating Scanner Button - Absolutely Positioned in Center */}
+            {/* ── Floating scanner ─────────────────────── */}
             <View style={styles.scannerPositioner} pointerEvents="box-none">
-                <ScannerButton onPress={handleScannerPress} />
+                <ScannerButton onPress={() => {
+                    if (Platform.OS !== 'web') Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                    router.push('/scanner');
+                }} />
             </View>
         </View>
     );
 }
 
+// ─── Styles ───────────────────────────────────────────────────────────────────
+
 const styles = StyleSheet.create({
-    rootContainer: {
+    root: {
         position: 'absolute',
-        bottom: BOTTOM_OFFSET,
-        left: TAB_BAR_MARGIN,
-        right: TAB_BAR_MARGIN,
-        height: TAB_BAR_HEIGHT,
+        bottom: BOTTOM,
+        left: BAR_MARGIN,
+        right: BAR_MARGIN,
+        height: BAR_H,
         alignItems: 'center',
-        justifyContent: 'center',
     },
-    glassBar: {
+
+    // Bar shell
+    bar: {
         width: '100%',
         height: '100%',
-        borderRadius: 40,
+        borderRadius: 34,
         overflow: 'hidden',
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.07)',
         shadowColor: '#000',
-        shadowOffset: {
-            width: 0,
-            height: 8,
-        },
-        shadowOpacity: 0.4,
-        shadowRadius: 16,
-        elevation: 12,
-        backgroundColor: 'rgba(20, 20, 23, 0.95)', // Fallback
+        shadowOffset: { width: 0, height: 14 },
+        shadowOpacity: 0.6,
+        shadowRadius: 28,
+        elevation: 18,
     },
-    glassGradient: {
-        ...StyleSheet.absoluteFillObject,
-    },
-    glassHighlight: {
+    topEdge: {
         position: 'absolute',
-        top: 0,
-        left: 0,
-        right: 0,
+        top: 0, left: 20, right: 20,
         height: 1,
-        backgroundColor: 'rgba(255, 255, 255, 0.15)',
+        backgroundColor: 'rgba(255,255,255,0.10)',
+        borderRadius: 1,
     },
-    gridContainer: {
-        flexDirection: 'row',
-        width: '100%',
-        height: '100%',
-    },
-    gridItem: {
-        flex: 1, // Divide width by 5 completely equally
-        alignItems: 'center',
-        justifyContent: 'center',
-    },
-    tabInner: {
-        alignItems: 'center',
-        justifyContent: 'center',
-        height: 50,
-        width: 50,
-    },
-    activeDot: {
+
+    // Sliding pill layer (sits between bar BG and icons)
+    pillLayer: {
         position: 'absolute',
-        bottom: 5,
-        width: 4,
-        height: 4,
-        borderRadius: 2,
-        backgroundColor: Colors.neon.primary,
-        shadowColor: Colors.neon.primary,
+        top: 0, bottom: 0, left: 0,
+        // width not needed — children are absolutely positioned
+    },
+    pillGlow: {
+        position: 'absolute',
+        top: (BAR_H - PILL_H) / 2 + 2,
+        width: PILL_W,
+        height: PILL_H,
+        borderRadius: PILL_H / 2,
+        opacity: 0.35,
         shadowOffset: { width: 0, height: 0 },
         shadowOpacity: 1,
-        shadowRadius: 4,
+        shadowRadius: 16,
+        elevation: 0,
     },
+    pill: {
+        position: 'absolute',
+        top: (BAR_H - PILL_H) / 2,
+        width: PILL_W,
+        height: PILL_H,
+        borderRadius: PILL_H / 2,
+        opacity: 0.88,
+    },
+
+    // Tab grid
+    grid: {
+        flex: 1,
+        flexDirection: 'row',
+        zIndex: 1,
+    },
+    tabItem: {
+        flex: 1,
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: 3,
+        paddingVertical: 6,
+    },
+    tabLabel: {
+        fontSize: 10,
+        fontFamily: 'SpaceGrotesk_600SemiBold',
+        letterSpacing: 0.2,
+    },
+    scannerGap: {
+        flex: 1,
+    },
+
+    // Scanner button
     scannerPositioner: {
         position: 'absolute',
-        bottom: 25, // Push it up so it floats above the bar
-        left: 0,
-        right: 0,
-        alignItems: 'center', // This centers it horizontally in the rootContainer
-        justifyContent: 'center',
-        zIndex: 50,
-    },
-    scannerContainer: {
-        width: 70,
-        height: 70,
-        borderRadius: 35,
-        backgroundColor: '#09090B', // Gap fill (matches app background)
+        bottom: 8,
+        left: 0, right: 0,
         alignItems: 'center',
-        justifyContent: 'center',
-        // Optional border to cut out the bar
-        borderWidth: 4,
-        borderColor: '#09090B', // Same as background to simulate "cutout"
+        zIndex: 10,
     },
-    scannerTouch: {
-        width: 60,
-        height: 60,
+    scannerWrap: {
+        width: 56,
+        height: 56,
         alignItems: 'center',
         justifyContent: 'center',
     },
-    scannerCircle: {
-        width: 58,
-        height: 58,
-        borderRadius: 29,
+    scannerRing: {
+        position: 'absolute',
+        width: 56, height: 56,
+        borderRadius: 28,
+        borderWidth: 1.5,
+        borderColor: Colors.neon.primary + '40',
+        shadowColor: Colors.neon.primary,
+        shadowOffset: { width: 0, height: 0 },
+        shadowOpacity: 0.35,
+        shadowRadius: 10,
+    },
+    scannerBtn: {
+        width: 46, height: 46,
+        borderRadius: 23,
         overflow: 'hidden',
         shadowColor: Colors.neon.primary,
-        shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 0.5,
-        shadowRadius: 10,
-        elevation: 8,
+        shadowOffset: { width: 0, height: 3 },
+        shadowOpacity: 0.7,
+        shadowRadius: 12,
+        elevation: 10,
     },
-    scannerGradient: {
+    scannerGrad: {
         flex: 1,
         alignItems: 'center',
         justifyContent: 'center',

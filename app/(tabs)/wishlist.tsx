@@ -141,17 +141,22 @@ export default function WishlistScreen() {
                 colors={[Colors.neon.wishlistGradient, Colors.neon.background]}
                 style={styles.headerGradient}
             />
+            {/* Glow orbs */}
+            <View style={styles.glowOrb1} />
+            <View style={styles.glowOrb2} />
+            <View style={styles.glowOrb3} />
 
             {/* Header */}
             <Animated.View entering={FadeIn.duration(600)} style={styles.header}>
                 <View style={styles.headerLeft}>
-                    <Text variant="displaySmall" style={styles.headerTitle}>Wishlist</Text>
-                    <Text variant="bodyLarge" style={styles.headerSub}>
+                    <Text style={styles.headerEyebrow}>SAVED FOR LATER</Text>
+                    <Text style={styles.headerTitle}>Wishlist</Text>
+                    <Text style={styles.headerSub}>
                         {wishlist.length} manga waiting for you
                     </Text>
                 </View>
                 <View style={styles.headerIcon}>
-                    <Ionicons name="heart" size={24} color="#F43F5E" />
+                    <Ionicons name="heart" size={20} color="#F43F5E" />
                 </View>
             </Animated.View>
 
@@ -218,22 +223,38 @@ export default function WishlistScreen() {
 const styles = StyleSheet.create({
     container: { flex: 1 },
     headerGradient: {
-        position: 'absolute', top: 0, left: 0, right: 0, height: 300,
+        position: 'absolute', top: 0, left: 0, right: 0, height: 320,
+    },
+    glowOrb1: {
+        position: 'absolute', top: 30, right: -55,
+        width: 220, height: 220, borderRadius: 110,
+        backgroundColor: '#F43F5E14',
+    },
+    glowOrb2: {
+        position: 'absolute', top: 260, left: -70,
+        width: 200, height: 200, borderRadius: 100,
+        backgroundColor: Colors.neon.primary + '0D',
+    },
+    glowOrb3: {
+        position: 'absolute', top: 520, right: -50,
+        width: 170, height: 170, borderRadius: 85,
+        backgroundColor: '#F43F5E0A',
     },
     header: {
-        flexDirection: 'row',
-        justifyContent: 'space-between',
-        alignItems: 'flex-start',
-        paddingTop: 60,
-        paddingHorizontal: 20,
-        paddingBottom: 16,
+        flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end',
+        paddingTop: 60, paddingHorizontal: 20, paddingBottom: 16,
     },
     headerLeft: { flex: 1 },
-    headerTitle: { fontWeight: 'bold', color: '#fff' },
-    headerSub: { color: 'rgba(255,255,255,0.6)', marginTop: 4 },
+    headerEyebrow: {
+        color: '#F43F5E', fontSize: 11, fontWeight: '700',
+        letterSpacing: 2, marginBottom: 4, opacity: 0.85,
+    },
+    headerTitle: { color: '#fff', fontSize: 32, fontWeight: '900', letterSpacing: -0.5 },
+    headerSub: { color: 'rgba(255,255,255,0.45)', marginTop: 4, fontSize: 13 },
     headerIcon: {
-        width: 48, height: 48, borderRadius: 24,
-        backgroundColor: 'rgba(244, 63, 94, 0.2)',
+        width: 44, height: 44, borderRadius: 22,
+        backgroundColor: '#F43F5E15',
+        borderWidth: 1, borderColor: '#F43F5E30',
         alignItems: 'center', justifyContent: 'center',
     },
     sortSection: { marginBottom: 10 },

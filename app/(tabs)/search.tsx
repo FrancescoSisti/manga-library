@@ -319,10 +319,15 @@ export default function SearchScreen() {
                 colors={[Colors.neon.searchGradient, Colors.neon.background]}
                 style={styles.headerGradient}
             />
+            {/* Glow orbs */}
+            <View style={styles.glowOrb1} />
+            <View style={styles.glowOrb2} />
+            <View style={styles.glowOrb3} />
 
             <View style={styles.header}>
-                <Text variant="headlineMedium" style={styles.headerTitle}>Discover</Text>
-                <Text variant="bodyMedium" style={styles.headerSub}>Search for your next obsession</Text>
+                <Text style={styles.headerEyebrow}>FIND MANGA</Text>
+                <Text style={styles.headerTitle}>Discover</Text>
+                <Text style={styles.headerSub}>Search for your next obsession</Text>
             </View>
 
             <View style={styles.searchContainer}>
@@ -392,24 +397,35 @@ const styles = StyleSheet.create({
         backgroundColor: Colors.neon.background,
     },
     headerGradient: {
-        position: 'absolute',
-        top: 0,
-        left: 0,
-        right: 0,
-        height: 180,
+        position: 'absolute', top: 0, left: 0, right: 0, height: 280,
+    },
+    glowOrb1: {
+        position: 'absolute', top: 30, right: -60,
+        width: 220, height: 220, borderRadius: 110,
+        backgroundColor: Colors.neon.secondary + '12',
+    },
+    glowOrb2: {
+        position: 'absolute', top: 280, left: -80,
+        width: 200, height: 200, borderRadius: 100,
+        backgroundColor: Colors.neon.accent + '0C',
+    },
+    glowOrb3: {
+        position: 'absolute', top: 560, right: -50,
+        width: 160, height: 160, borderRadius: 80,
+        backgroundColor: Colors.neon.secondary + '0A',
     },
     header: {
-        paddingTop: 60,
-        paddingHorizontal: 20,
-        marginBottom: 16,
+        paddingTop: 60, paddingHorizontal: 20, marginBottom: 16,
+    },
+    headerEyebrow: {
+        color: Colors.neon.secondary, fontSize: 11, fontWeight: '700',
+        letterSpacing: 2, marginBottom: 4, opacity: 0.85,
     },
     headerTitle: {
-        fontWeight: 'bold',
-        color: '#fff',
+        color: '#fff', fontSize: 32, fontWeight: '900', letterSpacing: -0.5,
     },
     headerSub: {
-        color: 'rgba(255,255,255,0.5)',
-        marginTop: 2,
+        color: 'rgba(255,255,255,0.45)', marginTop: 4, fontSize: 13,
     },
     searchContainer: {
         flexDirection: 'row',
