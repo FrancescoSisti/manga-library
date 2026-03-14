@@ -1,7 +1,31 @@
-import axios from 'axios';
+import axios, { AxiosRequestConfig } from 'axios';
 
 const MANGADEX_API = 'https://api.mangadex.org';
 const COVER_BASE_URL = 'https://uploads.mangadex.org/covers';
+
+// --- Retry Logic Helpers ---
+
+const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+
+async function fetchWithRetry<T>(url: string, config: AxiosRequestConfig, retries = 3, backoff = 1000): Promise<T> {
+    try {
+        const response = await axios.get<T>(url, config);
+        return response.data;
+    } catch (error: any) {
+        if (retries > 0) {
+            const status = error.response?.status;
+            // Retry on network errors or 5xx status codes
+            if (!status || (status >= 500 && status < 600) || status === 429) {
+                console.log(`Retrying request to ${url} (Status: ${status}). Attempts left: ${retries}`);
+                await delay(backoff);
+                return fetchWithRetry<T>(url, config, retries - 1, backoff * 2);
+            }
+        }
+        throw error;
+    }
+}
+
+// ---------------------------
 
 // Types for MangaDex API responses
 export interface MangaDexManga {
@@ -120,7 +144,7 @@ function getDescription(manga: MangaDexManga): string {
  */
 export async function searchManga(query: string, limit: number = 20): Promise<SimplifiedManga[]> {
     try {
-        const response = await axios.get<MangaDexSearchResult>(`${MANGADEX_API}/manga`, {
+        const data = await fetchWithRetry<MangaDexSearchResult>(`${MANGADEX_API}/manga`, {
             params: {
                 title: query,
                 limit,
@@ -132,7 +156,7 @@ export async function searchManga(query: string, limit: number = 20): Promise<Si
 
         // Map results WITHOUT fetching volume counts (too slow)
         // Volume counts will be fetched when user adds manga to library
-        return response.data.data.map(manga => ({
+        return data.data.map(manga => ({
             id: manga.id,
             title: getBestTitle(manga),
             author: getAuthor(manga),
@@ -154,9 +178,9 @@ export async function searchManga(query: string, limit: number = 20): Promise<Si
  */
 export async function getMangaVolumeCount(mangaId: string): Promise<number | null> {
     try {
-        const response = await axios.get(`${MANGADEX_API}/manga/${mangaId}/aggregate`);
+        const data = await fetchWithRetry<any>(`${MANGADEX_API}/manga/${mangaId}/aggregate`, {});
 
-        const volumes = response.data?.volumes;
+        const volumes = data?.volumes;
         if (!volumes) return null;
 
         // Find the highest numbered volume (ignoring "none")
@@ -182,13 +206,13 @@ export async function getMangaVolumeCount(mangaId: string): Promise<number | nul
  */
 export async function getMangaDetails(mangaId: string): Promise<SimplifiedManga | null> {
     try {
-        const response = await axios.get(`${MANGADEX_API}/manga/${mangaId}`, {
+        const data = await fetchWithRetry<any>(`${MANGADEX_API}/manga/${mangaId}`, {
             params: {
                 'includes[]': ['cover_art', 'author'],
             },
         });
 
-        const manga = response.data.data as MangaDexManga;
+        const manga = data.data as MangaDexManga;
         const volumes = await getMangaVolumeCount(mangaId);
 
         return {

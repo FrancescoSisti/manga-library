@@ -1,4 +1,4 @@
-import axios from 'axios';
+import axios, { AxiosRequestConfig } from 'axios';
 
 // Google Books API for getting published volume counts
 // API Key can be added for higher rate limits, but works without it for basic usage
@@ -19,6 +19,30 @@ interface GoogleBooksResult {
         };
     }>;
 }
+
+// --- Retry Logic Helpers ---
+
+const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+
+async function fetchWithRetry<T>(url: string, config: AxiosRequestConfig, retries = 3, backoff = 1000): Promise<T> {
+    try {
+        const response = await axios.get<T>(url, config);
+        return response.data;
+    } catch (error: any) {
+        if (retries > 0) {
+            const status = error.response?.status;
+            // Retry on network errors or 5xx status codes
+            if (!status || (status >= 500 && status < 600) || status === 429) {
+                console.log(`Retrying request to ${url} (Status: ${status}). Attempts left: ${retries}`);
+                await delay(backoff);
+                return fetchWithRetry<T>(url, config, retries - 1, backoff * 2);
+            }
+        }
+        throw error;
+    }
+}
+
+// ---------------------------
 
 /**
  * Extracts volume number from a title like "Dandadan, Vol. 7" or "One Piece 113"
@@ -68,9 +92,9 @@ export async function getVolumeCountFromGoogleBooks(seriesTitle: string): Promis
             params.key = API_KEY;
         }
 
-        const response = await axios.get<GoogleBooksResult>(GOOGLE_BOOKS_API, { params });
+        const data = await fetchWithRetry<GoogleBooksResult>(GOOGLE_BOOKS_API, { params });
 
-        if (!response.data.items || response.data.items.length === 0) {
+        if (!data.items || data.items.length === 0) {
             console.log(`No Google Books results for "${cleanTitle}"`);
             return null;
         }
@@ -78,7 +102,7 @@ export async function getVolumeCountFromGoogleBooks(seriesTitle: string): Promis
         // Extract volume numbers from all matching titles
         const volumeNumbers: number[] = [];
 
-        for (const item of response.data.items) {
+        for (const item of data.items) {
             const title = item.volumeInfo.title.toLowerCase();
             const searchTitle = cleanTitle.toLowerCase();
 
@@ -160,15 +184,15 @@ export async function getVolumesWithCovers(
             params.key = API_KEY;
         }
 
-        const response = await axios.get<GoogleBooksResult>(GOOGLE_BOOKS_API, { params });
+        const data = await fetchWithRetry<GoogleBooksResult>(GOOGLE_BOOKS_API, { params });
 
-        if (!response.data.items) {
+        if (!data.items) {
             return [];
         }
 
         const volumeMap = new Map<number, VolumeInfo>();
 
-        for (const item of response.data.items) {
+        for (const item of data.items) {
             const title = item.volumeInfo.title;
             const searchTitle = cleanTitle.toLowerCase();
 
@@ -216,6 +240,8 @@ export interface ISBNLookupResult {
     coverUrl?: string;
     authors?: string[];
     description?: string;
+    genres?: string[];
+    price?: number;
 }
 
 /**
@@ -227,19 +253,25 @@ export async function lookupByISBN(isbn: string): Promise<ISBNLookupResult> {
         const params: any = {
             q: `isbn:${isbn}`,
             maxResults: 1,
+            country: 'IT'
         };
 
         if (API_KEY) {
             params.key = API_KEY;
         }
 
-        const response = await axios.get(GOOGLE_BOOKS_API, { params });
+        const response = await fetchWithRetry<any>(GOOGLE_BOOKS_API, { params });
 
-        if (!response.data.items || response.data.items.length === 0) {
+        if (!response.items || response.items.length === 0) {
             return { found: false };
         }
 
-        const book = response.data.items[0].volumeInfo;
+        const book = response.items[0].volumeInfo;
+        const saleInfo = response.items[0].saleInfo;
+
+        console.log('DEBUG: Full API Response for ISBN', isbn);
+        console.log('DEBUG: saleInfo:', JSON.stringify(saleInfo, null, 2));
+
         const title = book.title || '';
         const volumeNumber = extractVolumeNumber(title);
 
@@ -258,6 +290,14 @@ export async function lookupByISBN(isbn: string): Promise<ISBNLookupResult> {
                 .replace('http://', 'https://');
         }
 
+        // Get Price
+        let price = null;
+        if (saleInfo?.retailPrice?.amount) {
+            price = saleInfo.retailPrice.amount;
+        } else if (saleInfo?.listPrice?.amount) {
+            price = saleInfo.listPrice.amount;
+        }
+
         return {
             found: true,
             seriesTitle,
@@ -266,6 +306,8 @@ export async function lookupByISBN(isbn: string): Promise<ISBNLookupResult> {
             coverUrl,
             authors: book.authors,
             description: book.description,
+            genres: book.categories,
+            price: price
         };
     } catch (error) {
         console.error('ISBN lookup error:', error);

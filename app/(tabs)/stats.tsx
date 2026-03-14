@@ -1,28 +1,14 @@
+import { getLibraryStats, getWishlist, LibraryStats } from '@/components/database';
 import { Colors } from '@/constants/Colors';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
-import React from 'react';
+import { useFocusEffect } from 'expo-router';
+import React, { useCallback, useState } from 'react';
 import { Dimensions, ScrollView, StatusBar, StyleSheet, Text, View } from 'react-native';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 const { width } = Dimensions.get('window');
-
-// Mock Data
-const STATS = {
-    totalVolumes: 142,
-    totalSeries: 28,
-    wishlist: 15,
-    monthlySpend: '€45.90',
-    completionRate: 68,
-};
-
-const GENRES = [
-    { name: 'Shonen', percent: 45, color: '#D946EF' },
-    { name: 'Seinen', percent: 30, color: '#8B5CF6' },
-    { name: 'Slice of Life', percent: 15, color: '#22D3EE' },
-    { name: 'Horror', percent: 10, color: '#F43F5E' },
-];
 
 function StatCard({ title, value, icon, delay, isPrimary = false }: { title: string, value: string | number, icon: string, delay: number, isPrimary?: boolean }) {
     return (
@@ -45,12 +31,12 @@ function StatCard({ title, value, icon, delay, isPrimary = false }: { title: str
     );
 }
 
-function ProgressBar({ label, percent, color, delay }: { label: string, percent: number, color: string, delay: number }) {
+function ProgressBar({ label, percent, count, color, delay }: { label: string, percent: number, count: number, color: string, delay: number }) {
     return (
         <Animated.View entering={FadeInDown.delay(delay).springify()} style={styles.progressRow}>
             <View style={styles.progressLabelContainer}>
                 <Text style={styles.progressLabel}>{label}</Text>
-                <Text style={styles.progressPercent}>{percent}%</Text>
+                <Text style={styles.progressPercent}>{count} ({percent}%)</Text>
             </View>
             <View style={styles.progressTrack}>
                 <View style={[styles.progressBar, { width: `${percent}%`, backgroundColor: color, shadowColor: color }]} />
@@ -60,6 +46,40 @@ function ProgressBar({ label, percent, color, delay }: { label: string, percent:
 }
 
 export default function StatsScreen() {
+    const [stats, setStats] = useState<LibraryStats>({
+        totalOwnedVolumes: 0,
+        totalVolumes: 0,
+        completedSeries: 0,
+        totalSeries: 0,
+        totalValue: 0,
+        topGenres: []
+    });
+    const [wishlistCount, setWishlistCount] = useState(0);
+    const [completionRate, setCompletionRate] = useState(0);
+
+    useFocusEffect(
+        useCallback(() => {
+            const loadStats = () => {
+                const libStats = getLibraryStats();
+                const wishlist = getWishlist();
+
+                setStats(libStats);
+                setWishlistCount(wishlist.length);
+
+                if (libStats.totalVolumes > 0) {
+                    setCompletionRate(Math.round((libStats.totalOwnedVolumes / libStats.totalVolumes) * 100));
+                } else {
+                    setCompletionRate(0);
+                }
+            };
+
+            loadStats();
+        }, [])
+    );
+
+    // Genre colors for visualization
+    const GENRE_COLORS = ['#D946EF', '#8B5CF6', '#22D3EE', '#F43F5E', '#10B981'];
+
     return (
         <View style={styles.container}>
             <StatusBar barStyle="light-content" />
@@ -79,30 +99,39 @@ export default function StatsScreen() {
 
                     {/* Main Stats Grid */}
                     <View style={styles.grid}>
-                        <StatCard title="Volumi Totali" value={STATS.totalVolumes} icon="library" delay={200} isPrimary />
-                        <StatCard title="Serie" value={STATS.totalSeries} icon="albums" delay={300} />
-                        <StatCard title="In Wishlist" value={STATS.wishlist} icon="heart" delay={400} />
-                        <StatCard title="Spesa Mese" value={STATS.monthlySpend} icon="wallet" delay={500} />
+                        <StatCard title="Volumi Totali" value={stats.totalOwnedVolumes} icon="library" delay={200} isPrimary />
+                        <StatCard title="Serie" value={stats.totalSeries} icon="albums" delay={300} />
+                        <StatCard title="In Wishlist" value={wishlistCount} icon="heart" delay={400} />
+                        <StatCard title="Valore Totale" value={`€${stats.totalValue.toFixed(2)}`} icon="wallet" delay={500} />
                     </View>
 
                     {/* Genre Distribution */}
-                    <Animated.View entering={FadeInDown.delay(600).springify()} style={styles.sectionContainer}>
-                        <Text style={styles.sectionTitle}>Generi Preferiti</Text>
-                        <View style={styles.glassSection}>
-                            <LinearGradient
-                                colors={['rgba(255,255,255,0.03)', 'rgba(255,255,255,0.01)']}
-                                style={styles.sectionGradient}
-                            >
-                                {GENRES.map((g, i) => (
-                                    <ProgressBar key={g.name} label={g.name} percent={g.percent} color={g.color} delay={700 + (i * 100)} />
-                                ))}
-                            </LinearGradient>
-                        </View>
-                    </Animated.View>
+                    {stats.topGenres.length > 0 && (
+                        <Animated.View entering={FadeInDown.delay(600).springify()} style={styles.sectionContainer}>
+                            <Text style={styles.sectionTitle}>Generi Preferiti</Text>
+                            <View style={styles.glassSection}>
+                                <LinearGradient
+                                    colors={['rgba(255,255,255,0.03)', 'rgba(255,255,255,0.01)']}
+                                    style={styles.sectionGradient}
+                                >
+                                    {stats.topGenres.map((g, i) => (
+                                        <ProgressBar
+                                            key={g.name}
+                                            label={g.name}
+                                            percent={g.percent}
+                                            count={g.count}
+                                            color={GENRE_COLORS[i % GENRE_COLORS.length]}
+                                            delay={700 + (i * 100)}
+                                        />
+                                    ))}
+                                </LinearGradient>
+                            </View>
+                        </Animated.View>
+                    )}
 
-                    {/* Reading Goal */}
-                    <Animated.View entering={FadeInDown.delay(1000).springify()} style={styles.sectionContainer}>
-                        <Text style={styles.sectionTitle}>Obiettivo Lettura</Text>
+                    {/* Reading Goal / Completion Status */}
+                    <Animated.View entering={FadeInDown.delay(stats.topGenres.length > 0 ? 1000 : 600).springify()} style={styles.sectionContainer}>
+                        <Text style={styles.sectionTitle}>Stato Collezione</Text>
                         <View style={styles.goalCard}>
                             <LinearGradient
                                 colors={['rgba(139,92,246,0.15)', 'rgba(139,92,246,0.05)']}
@@ -110,11 +139,11 @@ export default function StatsScreen() {
                                 start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}
                             >
                                 <View style={styles.goalInfo}>
-                                    <Text style={styles.goalText}>Hai letto il <Text style={{ color: Colors.neon.accent, fontWeight: 'bold' }}>{STATS.completionRate}%</Text> della tua collezione.</Text>
+                                    <Text style={styles.goalText}>Hai collezionato il <Text style={{ color: Colors.neon.accent, fontWeight: 'bold' }}>{completionRate}%</Text> dei volumi totali previsti.</Text>
                                     <View style={styles.goalProgressTrack}>
                                         <LinearGradient
                                             colors={[Colors.neon.accent, Colors.neon.secondary]}
-                                            style={[styles.goalProgressBar, { width: `${STATS.completionRate}%` }]}
+                                            style={[styles.goalProgressBar, { width: `${Math.min(completionRate, 100)}%` }]}
                                             start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}
                                         />
                                     </View>

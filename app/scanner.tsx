@@ -10,35 +10,53 @@ import { Image, StyleSheet, TouchableOpacity, View } from 'react-native';
 import { ActivityIndicator, Button, Text } from 'react-native-paper';
 
 export default function ScannerScreen() {
-    const router = useRouter();
     const [permission, requestPermission] = useCameraPermissions();
+    const router = useRouter();
     const [scanned, setScanned] = useState(false);
     const [loading, setLoading] = useState(false);
     const [result, setResult] = useState<ISBNLookupResult | null>(null);
-    const [toast, setToast] = useState<{ visible: boolean; message: string; type: 'success' | 'error' | 'info' }>({ visible: false, message: '', type: 'success' });
 
-    const showToast = (message: string, type: 'success' | 'error' | 'info' = 'success') => {
-        setToast({ visible: true, message, type });
-    };
+    if (!permission) {
+        return <View />;
+    }
 
-    const handleBarcodeScanned = async ({ data }: { data: string }) => {
+    if (!permission.granted) {
+        return (
+            <View style={styles.container}>
+                <Text style={{ marginBottom: 20, color: '#FFF' }}>Serve il permesso per usare la fotocamera</Text>
+                <Button mode="contained" onPress={requestPermission}>Concedi Permesso</Button>
+            </View>
+        );
+    }
+
+    const handleBarCodeScanned = async ({ type, data }: { type: string, data: string }) => {
         if (scanned || loading) return;
 
         setScanned(true);
         setLoading(true);
-
         try {
-            const lookupResult = await lookupByISBN(data);
-            setResult(lookupResult);
-
-            if (!lookupResult.found) {
-                showToast('Volume non trovato', 'error');
+            const dataResult = await lookupByISBN(data);
+            if (dataResult.found) {
+                setResult(dataResult);
+            } else {
+                showToast('Manga non trovato', 'error');
+                setTimeout(() => setScanned(false), 2000);
             }
         } catch (error) {
-            showToast('Errore di ricerca', 'error');
+            showToast('Errore durante la scansione', 'error');
+            setScanned(false);
         } finally {
             setLoading(false);
         }
+    };
+
+    const showToast = (message: string, type: 'success' | 'error' | 'info') => {
+        Toast.show({
+            type: type,
+            text1: type === 'success' ? 'Successo' : type === 'error' ? 'Errore' : 'Info',
+            text2: message,
+            position: 'bottom',
+        });
     };
 
     const handleAddToLibrary = async () => {
@@ -57,14 +75,14 @@ export default function ScannerScreen() {
             } else {
                 // 2. Add new series
                 const volumes = await getBestVolumeCount(result.seriesTitle, null);
-                // addSeries returns the InsertResult which has lastInsertRowId
                 const insertResult = await addSeries(
                     result.seriesTitle,
                     result.authors?.[0] || 'Unknown',
                     volumes,
                     'Unknown',
                     result.coverUrl || '',
-                    result.description
+                    result.description,
+                    result.genres
                 );
                 seriesId = insertResult.lastInsertRowId;
                 wasNewSeries = true;
@@ -72,7 +90,8 @@ export default function ScannerScreen() {
 
             // 3. Mark volume as owned
             if (seriesId && result.volumeNumber) {
-                await toggleVolume(seriesId, result.volumeNumber, true);
+                console.log('DEBUG: Saving volume', result.volumeNumber, 'with price:', result.price);
+                await toggleVolume(seriesId, result.volumeNumber, true, result.price);
 
                 if (wasNewSeries) {
                     showToast(`${result.seriesTitle} aggiunta con Vol. ${result.volumeNumber}!`, 'success');
@@ -98,120 +117,56 @@ export default function ScannerScreen() {
         }
     };
 
-    const handleScanAgain = () => {
-        setResult(null);
-        setScanned(false);
-    };
-
-    // Permission handling
-    if (!permission) {
-        return (
-            <View style={styles.container}>
-                <ActivityIndicator size="large" color={Colors.neon.primary} />
-            </View>
-        );
-    }
-
-    if (!permission.granted) {
-        return (
-            <View style={styles.permissionContainer}>
-                <Ionicons name="camera-outline" size={80} color={Colors.neon.primary} />
-                <Text style={styles.permissionTitle}>Permesso Camera</Text>
-                <Text style={styles.permissionText}>
-                    Abbiamo bisogno del permesso per scansionare i codici a barre dei tuoi manga
-                </Text>
-                <Button mode="contained" onPress={requestPermission} style={styles.permissionBtn}>
-                    Concedi Permesso
-                </Button>
-            </View>
-        );
-    }
-
     return (
         <View style={styles.container}>
-            {/* Back Button */}
-            <TouchableOpacity style={styles.backBtn} onPress={() => router.back()}>
-                <Ionicons name="arrow-back" size={24} color="#fff" />
-            </TouchableOpacity>
+            {!result ? (
+                <CameraView
+                    style={StyleSheet.absoluteFillObject}
+                    onBarcodeScanned={scanned ? undefined : handleBarCodeScanned}
+                    barcodeScannerSettings={{
+                        barcodeTypes: ["ean13", "ean8"],
+                    }}
+                >
+                    <View style={styles.overlay}>
+                        <View style={styles.header}>
+                            <TouchableOpacity onPress={() => router.back()} style={styles.closeButton}>
+                                <Ionicons name="close" size={24} color="#FFF" />
+                            </TouchableOpacity>
+                            <Text style={styles.title}>Scansiona ISBN</Text>
+                        </View>
+                        <View style={styles.scanArea}>
+                            <View style={styles.scanFrame} />
+                            <Text style={styles.scanText}>Inquadra il codice a barre del manga</Text>
+                        </View>
+                    </View>
+                </CameraView>
+            ) : (
+                <View style={styles.resultContainer}>
+                    <Image source={{ uri: result.coverUrl }} style={styles.coverImage} resizeMode="contain" />
+                    <Text style={styles.resultTitle}>{result.fullTitle}</Text>
+                    {result.seriesTitle && <Text style={styles.resultSeries}>{result.seriesTitle}</Text>}
+                    {result.authors && <Text style={styles.resultAuthor}>{result.authors.join(', ')}</Text>}
 
-            {/* Camera */}
-            <CameraView
-                style={styles.camera}
-                barcodeScannerSettings={{
-                    barcodeTypes: ['ean13', 'ean8', 'upc_a', 'upc_e'],
-                }}
-                onBarcodeScanned={scanned ? undefined : handleBarcodeScanned}
-            />
+                    {result.price && (
+                        <Text style={styles.resultPrice}>Prezzo rilevato: €{result.price.toFixed(2)}</Text>
+                    )}
 
-            {/* Scanner Frame Overlay - Positioned absolutely on top of camera */}
-            <View style={styles.scannerOverlay} pointerEvents="none">
-                <View style={styles.scannerFrame}>
-                    <View style={[styles.corner, styles.topLeft]} />
-                    <View style={[styles.corner, styles.topRight]} />
-                    <View style={[styles.corner, styles.bottomLeft]} />
-                    <View style={[styles.corner, styles.bottomRight]} />
+                    <View style={styles.actions}>
+                        <Button mode="contained" onPress={handleAddToLibrary} style={styles.confirmButton} buttonColor={Colors.neon.primary}>
+                            Aggiungi alla Libreria
+                        </Button>
+                        <Button mode="outlined" onPress={() => { setResult(null); setScanned(false); }} style={styles.cancelButton} textColor="#FFF">
+                            Annulla
+                        </Button>
+                    </View>
                 </View>
-                <Text style={styles.scannerHint}>
-                    Inquadra il codice a barre del volume
-                </Text>
-            </View>
+            )}
 
-            {/* Loading Overlay */}
             {loading && (
                 <View style={styles.loadingOverlay}>
                     <ActivityIndicator size="large" color={Colors.neon.primary} />
-                    <Text style={styles.loadingText}>Ricerca in corso...</Text>
                 </View>
             )}
-
-            {/* Result Card */}
-            {result && result.found && !loading && (
-                <View style={styles.resultCard}>
-                    {result.coverUrl && (
-                        <Image source={{ uri: result.coverUrl }} style={styles.resultCover} />
-                    )}
-                    <View style={styles.resultInfo}>
-                        <Text style={styles.resultTitle} numberOfLines={2}>
-                            {result.fullTitle}
-                        </Text>
-                        {result.authors && (
-                            <Text style={styles.resultAuthor}>{result.authors[0]}</Text>
-                        )}
-                        {result.volumeNumber && (
-                            <View style={styles.volumeBadge}>
-                                <Text style={styles.volumeBadgeText}>Vol. {result.volumeNumber}</Text>
-                            </View>
-                        )}
-                    </View>
-                    <View style={styles.resultActions}>
-                        <TouchableOpacity style={styles.addBtn} onPress={handleAddToLibrary}>
-                            <Ionicons name="add" size={20} color="#fff" />
-                            <Text style={styles.addBtnText}>Aggiungi</Text>
-                        </TouchableOpacity>
-                        <TouchableOpacity style={styles.scanAgainBtn} onPress={handleScanAgain}>
-                            <Ionicons name="scan" size={18} color={Colors.neon.primary} />
-                        </TouchableOpacity>
-                    </View>
-                </View>
-            )}
-
-            {/* Not Found Card */}
-            {result && !result.found && !loading && (
-                <View style={styles.notFoundCard}>
-                    <Ionicons name="alert-circle" size={40} color="#EF4444" />
-                    <Text style={styles.notFoundText}>Volume non trovato</Text>
-                    <TouchableOpacity style={styles.scanAgainBtn} onPress={handleScanAgain}>
-                        <Text style={styles.scanAgainText}>Scansiona di nuovo</Text>
-                    </TouchableOpacity>
-                </View>
-            )}
-
-            <Toast
-                visible={toast.visible}
-                message={toast.message}
-                type={toast.type}
-                onHide={() => setToast({ ...toast, visible: false })}
-            />
         </View>
     );
 }
@@ -221,191 +176,96 @@ const styles = StyleSheet.create({
         flex: 1,
         backgroundColor: '#000',
     },
-    backBtn: {
-        position: 'absolute',
-        top: 50,
-        left: 20,
-        zIndex: 100,
-        width: 44,
-        height: 44,
-        borderRadius: 22,
-        backgroundColor: 'rgba(0,0,0,0.5)',
-        justifyContent: 'center',
-        alignItems: 'center',
-    },
-    camera: {
+    overlay: {
         flex: 1,
+        backgroundColor: 'rgba(0,0,0,0.5)',
+        justifyContent: 'space-between',
     },
-    scannerOverlay: {
-        ...StyleSheet.absoluteFillObject,
+    header: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        paddingTop: 50,
+        paddingHorizontal: 20,
+    },
+    closeButton: {
+        padding: 8,
+        backgroundColor: 'rgba(0,0,0,0.5)',
+        borderRadius: 20,
+    },
+    title: {
+        color: '#FFF',
+        fontSize: 18,
+        fontWeight: 'bold',
+        marginLeft: 20,
+    },
+    scanArea: {
+        flex: 1,
         justifyContent: 'center',
         alignItems: 'center',
-        backgroundColor: 'rgba(0,0,0,0.3)',
     },
-    scannerFrame: {
+    scanFrame: {
         width: 280,
-        height: 150,
-        position: 'relative',
-    },
-    corner: {
-        position: 'absolute',
-        width: 30,
-        height: 30,
+        height: 180,
+        borderWidth: 2,
         borderColor: Colors.neon.primary,
+        borderRadius: 20,
+        backgroundColor: 'transparent',
     },
-    topLeft: {
-        top: 0,
-        left: 0,
-        borderTopWidth: 3,
-        borderLeftWidth: 3,
+    scanText: {
+        color: '#FFF',
+        marginTop: 20,
+        opacity: 0.8,
     },
-    topRight: {
-        top: 0,
-        right: 0,
-        borderTopWidth: 3,
-        borderRightWidth: 3,
+    resultContainer: {
+        flex: 1,
+        backgroundColor: '#000',
+        padding: 20,
+        alignItems: 'center',
+        justifyContent: 'center',
     },
-    bottomLeft: {
-        bottom: 0,
-        left: 0,
-        borderBottomWidth: 3,
-        borderLeftWidth: 3,
+    coverImage: {
+        width: 200,
+        height: 300,
+        borderRadius: 10,
+        marginBottom: 20,
     },
-    bottomRight: {
-        bottom: 0,
-        right: 0,
-        borderBottomWidth: 3,
-        borderRightWidth: 3,
-    },
-    scannerHint: {
-        color: '#fff',
-        marginTop: 30,
-        fontSize: 14,
+    resultTitle: {
+        color: '#FFF',
+        fontSize: 20,
+        fontWeight: 'bold',
         textAlign: 'center',
+        marginBottom: 8,
+    },
+    resultSeries: {
+        color: Colors.neon.primary,
+        fontSize: 16,
+        marginBottom: 4,
+    },
+    resultAuthor: {
+        color: '#AAA',
+        fontSize: 14,
+        marginBottom: 20,
+    },
+    resultPrice: {
+        color: Colors.neon.accent,
+        fontSize: 16,
+        marginBottom: 20,
+        fontWeight: 'bold',
+    },
+    actions: {
+        width: '100%',
+        gap: 10,
+    },
+    confirmButton: {
+        paddingVertical: 6,
+    },
+    cancelButton: {
+        borderColor: '#333',
     },
     loadingOverlay: {
         ...StyleSheet.absoluteFillObject,
-        backgroundColor: 'rgba(0,0,0,0.8)',
+        backgroundColor: 'rgba(0,0,0,0.7)',
         justifyContent: 'center',
         alignItems: 'center',
-    },
-    loadingText: {
-        color: '#fff',
-        marginTop: 15,
-        fontSize: 16,
-    },
-    resultCard: {
-        position: 'absolute',
-        bottom: 40,
-        left: 20,
-        right: 20,
-        backgroundColor: Colors.neon.surface,
-        borderRadius: 16,
-        padding: 16,
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: 12,
-        borderWidth: 1,
-        borderColor: Colors.neon.primary,
-    },
-    resultCover: {
-        width: 60,
-        height: 90,
-        borderRadius: 8,
-    },
-    resultInfo: {
-        flex: 1,
-    },
-    resultTitle: {
-        color: '#fff',
-        fontSize: 15,
-        fontWeight: 'bold',
-    },
-    resultAuthor: {
-        color: '#888',
-        fontSize: 13,
-        marginTop: 4,
-    },
-    volumeBadge: {
-        backgroundColor: Colors.neon.primary,
-        paddingHorizontal: 8,
-        paddingVertical: 3,
-        borderRadius: 6,
-        alignSelf: 'flex-start',
-        marginTop: 8,
-    },
-    volumeBadgeText: {
-        color: '#fff',
-        fontSize: 11,
-        fontWeight: 'bold',
-    },
-    resultActions: {
-        flexDirection: 'column',
-        gap: 8,
-    },
-    addBtn: {
-        backgroundColor: Colors.neon.primary,
-        flexDirection: 'row',
-        alignItems: 'center',
-        paddingHorizontal: 14,
-        paddingVertical: 10,
-        borderRadius: 10,
-        gap: 4,
-    },
-    addBtnText: {
-        color: '#fff',
-        fontWeight: '600',
-    },
-    scanAgainBtn: {
-        backgroundColor: 'rgba(255,255,255,0.1)',
-        padding: 10,
-        borderRadius: 10,
-        alignItems: 'center',
-    },
-    scanAgainText: {
-        color: Colors.neon.primary,
-        fontWeight: '600',
-    },
-    notFoundCard: {
-        position: 'absolute',
-        bottom: 40,
-        left: 20,
-        right: 20,
-        backgroundColor: Colors.neon.surface,
-        borderRadius: 16,
-        padding: 24,
-        alignItems: 'center',
-        gap: 12,
-        borderWidth: 1,
-        borderColor: '#EF4444',
-    },
-    notFoundText: {
-        color: '#fff',
-        fontSize: 16,
-        fontWeight: '600',
-    },
-    permissionContainer: {
-        flex: 1,
-        backgroundColor: Colors.neon.background,
-        justifyContent: 'center',
-        alignItems: 'center',
-        padding: 40,
-    },
-    permissionTitle: {
-        color: '#fff',
-        fontSize: 24,
-        fontWeight: 'bold',
-        marginTop: 20,
-    },
-    permissionText: {
-        color: '#888',
-        fontSize: 15,
-        textAlign: 'center',
-        marginTop: 10,
-        lineHeight: 22,
-    },
-    permissionBtn: {
-        marginTop: 30,
-        backgroundColor: Colors.neon.primary,
     },
 });
