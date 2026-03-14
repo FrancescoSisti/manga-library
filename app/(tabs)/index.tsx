@@ -1,4 +1,4 @@
-import { deleteSeries, getLibraryStats, getSeries, getSeriesCount, getSeriesPaginated, getVolumes, LibraryStats, Series, updateSeriesSortOrders } from '@/components/database';
+import { deleteSeries, getAllSeriesWithStats, getLibraryStats, getSeriesCount, getSeriesPaginatedWithStats, LibraryStats, Series, SeriesWithStats, updateSeriesSortOrders } from '@/components/database';
 import { CoverImage } from '@/components/CoverImage';
 import { SkeletonLibraryCard } from '@/components/SkeletonCard';
 import { Toast } from '@/components/Toast';
@@ -8,7 +8,7 @@ import * as Haptics from 'expo-haptics';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router, useFocusEffect } from 'expo-router';
 import { useCallback, useMemo, useState } from 'react';
-import { Dimensions, FlatList, Pressable, Modal as RNModal, RefreshControl, ScrollView, StyleSheet, TouchableOpacity, View } from 'react-native';
+import { Dimensions, FlatList, Pressable, Modal as RNModal, RefreshControl, ScrollView, StyleSheet, TextInput, TouchableOpacity, View } from 'react-native';
 import { Text, useTheme } from 'react-native-paper';
 import DraggableFlatList, { RenderItemParams, ScaleDecorator } from 'react-native-draggable-flatlist';
 import Animated, { FadeIn, FadeInDown, Layout, SlideOutLeft } from 'react-native-reanimated';
@@ -38,18 +38,19 @@ const AnimatedTouchable = Animated.createAnimatedComponent(TouchableOpacity);
 
 export default function HomeScreen() {
   const theme = useTheme();
-  const [series, setSeries] = useState<Series[]>([]);
+  const [series, setSeries] = useState<SeriesWithStats[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
   const [hasMore, setHasMore] = useState(true);
   const [sortBy, setSortBy] = useState<SortOption>('recent');
   const [filterBy, setFilterBy] = useState<FilterOption>('all');
+  const [searchQuery, setSearchQuery] = useState('');
   const [stats, setStats] = useState<LibraryStats>({ totalOwnedVolumes: 0, totalVolumes: 0, completedSeries: 0, totalSeries: 0, totalValue: 0, topGenres: [] });
-  const [deleteModal, setDeleteModal] = useState<{ visible: boolean; item: Series | null }>({ visible: false, item: null });
+  const [deleteModal, setDeleteModal] = useState<{ visible: boolean; item: SeriesWithStats | null }>({ visible: false, item: null });
   const [toast, setToast] = useState<{ visible: boolean; message: string; type: 'success' | 'error' | 'info' | 'wishlist' }>({ visible: false, message: '', type: 'success' });
   const [isReorderMode, setIsReorderMode] = useState(false);
-  const [reorderData, setReorderData] = useState<Series[]>([]);
+  const [reorderData, setReorderData] = useState<SeriesWithStats[]>([]);
 
   useFocusEffect(
     useCallback(() => {
@@ -59,7 +60,7 @@ export default function HomeScreen() {
 
   const loadSeries = () => {
     setLoading(true);
-    const data = getSeriesPaginated(PAGE_SIZE, 0);
+    const data = getSeriesPaginatedWithStats(PAGE_SIZE, 0);
     setSeries(data);
     setStats(getLibraryStats());
     const total = getSeriesCount();
@@ -70,7 +71,7 @@ export default function HomeScreen() {
   const loadMore = () => {
     if (loadingMore || !hasMore) return;
     setLoadingMore(true);
-    const data = getSeriesPaginated(PAGE_SIZE, series.length);
+    const data = getSeriesPaginatedWithStats(PAGE_SIZE, series.length);
     setSeries(prev => [...prev, ...data]);
     const total = getSeriesCount();
     setHasMore(series.length + data.length < total);
@@ -86,7 +87,15 @@ export default function HomeScreen() {
   const filteredAndSorted = useMemo(() => {
     let result = [...series];
 
-    // Filter
+    // Local search filter
+    if (searchQuery.trim().length > 0) {
+      const q = searchQuery.trim().toLowerCase();
+      result = result.filter(s =>
+        s.title.toLowerCase().includes(q) || s.author?.toLowerCase().includes(q)
+      );
+    }
+
+    // Status filter
     if (filterBy === 'ongoing') {
       result = result.filter(s => s.status === 'Publishing' || s.status === 'Ongoing');
     } else if (filterBy === 'completed') {
@@ -100,17 +109,14 @@ export default function HomeScreen() {
       result.sort((a, b) => b.title.localeCompare(a.title));
     } else if (sortBy === 'progress') {
       result.sort((a, b) => {
-        const aOwned = getVolumes(a.id).filter(v => v.isOwned === 1).length;
-        const bOwned = getVolumes(b.id).filter(v => v.isOwned === 1).length;
-        const aProgress = a.totalVolumes ? aOwned / a.totalVolumes : 0;
-        const bProgress = b.totalVolumes ? bOwned / b.totalVolumes : 0;
-        return bProgress - aProgress;
+        const aP = a.totalVolumes ? a.ownedCount / a.totalVolumes : 0;
+        const bP = b.totalVolumes ? b.ownedCount / b.totalVolumes : 0;
+        return bP - aP;
       });
     }
-    // 'recent' keeps default DESC order from DB
 
     return result;
-  }, [series, sortBy, filterBy]);
+  }, [series, sortBy, filterBy, searchQuery]);
 
   const showToast = (message: string, type: 'success' | 'error' | 'info' | 'wishlist' = 'success') => {
     setToast({ visible: true, message, type });
@@ -118,7 +124,7 @@ export default function HomeScreen() {
 
   const enterReorderMode = () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    const all = getSeries();
+    const all = getAllSeriesWithStats();
     setReorderData(all);
     setIsReorderMode(true);
   };
@@ -132,7 +138,7 @@ export default function HomeScreen() {
     showToast('Order saved', 'success');
   };
 
-  const handleLongPress = (item: Series) => {
+  const handleLongPress = (item: SeriesWithStats) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     setDeleteModal({ visible: true, item });
   };
@@ -146,7 +152,7 @@ export default function HomeScreen() {
     }
   };
 
-  const renderReorderItem = ({ item, drag, isActive }: RenderItemParams<Series>) => (
+  const renderReorderItem = ({ item, drag, isActive }: RenderItemParams<SeriesWithStats>) => (
     <ScaleDecorator activeScale={1.03}>
       <TouchableOpacity
         onLongPress={drag}
@@ -165,7 +171,7 @@ export default function HomeScreen() {
     </ScaleDecorator>
   );
 
-  const renderItem = ({ item, index }: { item: Series; index: number }) => (
+  const renderItem = ({ item, index }: { item: SeriesWithStats; index: number }) => (
     <AnimatedTouchable
       entering={FadeInDown.delay(index * 80).duration(400).springify()}
       exiting={SlideOutLeft.duration(300)}
@@ -194,6 +200,15 @@ export default function HomeScreen() {
             {item.status === 'Publishing' ? 'ONGOING' : item.status?.toUpperCase() || ''}
           </Text>
         </View>
+        {/* Read progress indicator */}
+        {(item.ownedCount > 0 || item.readCount > 0) && (
+          <View style={styles.readRow}>
+            <Ionicons name="eye" size={9} color="#22C55E" />
+            <Text style={styles.readText}>
+              {item.readCount}/{item.ownedCount}
+            </Text>
+          </View>
+        )}
       </View>
     </AnimatedTouchable>
   );
@@ -237,8 +252,6 @@ export default function HomeScreen() {
                 style={styles.cancelBtn}
                 onPress={() => setDeleteModal({ visible: false, item: null })}
                 activeOpacity={0.8}
-                accessibilityLabel="Cancel"
-                accessibilityRole="button"
               >
                 <Text style={styles.cancelText}>Cancel</Text>
               </TouchableOpacity>
@@ -246,8 +259,6 @@ export default function HomeScreen() {
                 style={styles.deleteBtn}
                 onPress={handleDelete}
                 activeOpacity={0.8}
-                accessibilityLabel={`Confirm remove ${deleteModal.item?.title}`}
-                accessibilityRole="button"
               >
                 <Ionicons name="trash" size={18} color="#fff" />
                 <Text style={styles.deleteText}>Remove</Text>
@@ -258,7 +269,7 @@ export default function HomeScreen() {
       </RNModal>
 
       <LinearGradient
-        colors={[Colors.neon.gradientStart, Colors.neon.background]}
+        colors={[Colors.neon.libraryGradient, Colors.neon.background]}
         style={styles.backgroundGradient}
       />
 
@@ -275,11 +286,7 @@ export default function HomeScreen() {
             </Text>
           </View>
           {isReorderMode ? (
-            <TouchableOpacity
-              style={styles.doneBtn}
-              onPress={saveReorderAndExit}
-              activeOpacity={0.8}
-            >
+            <TouchableOpacity style={styles.doneBtn} onPress={saveReorderAndExit} activeOpacity={0.8}>
               <Text style={styles.doneBtnText}>Done</Text>
             </TouchableOpacity>
           ) : (
@@ -289,7 +296,6 @@ export default function HomeScreen() {
                   style={styles.headerIcon}
                   onPress={enterReorderMode}
                   activeOpacity={0.7}
-                  accessibilityLabel="Reorder library"
                 >
                   <Ionicons name="swap-vertical-outline" size={22} color={Colors.neon.primary} />
                 </TouchableOpacity>
@@ -324,6 +330,26 @@ export default function HomeScreen() {
           </View>
         )}
       </Animated.View>
+
+      {/* Search Bar */}
+      {!loading && series.length > 0 && !isReorderMode && (
+        <View style={styles.searchContainer}>
+          <Ionicons name="search" size={16} color="#555" style={styles.searchIcon} />
+          <TextInput
+            style={styles.searchInput}
+            placeholder="Search in library..."
+            placeholderTextColor="#444"
+            value={searchQuery}
+            onChangeText={setSearchQuery}
+            returnKeyType="search"
+          />
+          {searchQuery.length > 0 && (
+            <TouchableOpacity onPress={() => setSearchQuery('')} style={styles.searchClear}>
+              <Ionicons name="close-circle" size={16} color="#555" />
+            </TouchableOpacity>
+          )}
+        </View>
+      )}
 
       {/* Filter & Sort Bar */}
       {!loading && series.length > 0 && !isReorderMode && (
@@ -405,21 +431,31 @@ export default function HomeScreen() {
           onEndReached={loadMore}
           onEndReachedThreshold={0.3}
           ListEmptyComponent={
-            <View style={styles.empty}>
-              <View style={styles.emptyIconWrapper}>
-                <Ionicons name="library-outline" size={48} color={Colors.neon.primary} />
+            searchQuery.length > 0 ? (
+              <View style={styles.empty}>
+                <Ionicons name="search" size={40} color="#333" />
+                <Text style={styles.emptyTitle}>No results for "{searchQuery}"</Text>
+                <TouchableOpacity onPress={() => setSearchQuery('')} style={{ marginTop: 12 }}>
+                  <Text style={{ color: Colors.neon.primary, fontWeight: '600' }}>Clear search</Text>
+                </TouchableOpacity>
               </View>
-              <Text style={styles.emptyTitle}>Your library is empty</Text>
-              <Text style={styles.emptySubtitle}>Search for your favourite manga{'\n'}and start building your collection!</Text>
-              <TouchableOpacity
-                style={styles.emptyAction}
-                onPress={() => router.push('/(tabs)/search')}
-                activeOpacity={0.8}
-              >
-                <Ionicons name="search" size={16} color="#fff" />
-                <Text style={styles.emptyActionText}>Browse Manga</Text>
-              </TouchableOpacity>
-            </View>
+            ) : (
+              <View style={styles.empty}>
+                <View style={styles.emptyIconWrapper}>
+                  <Ionicons name="library-outline" size={48} color={Colors.neon.primary} />
+                </View>
+                <Text style={styles.emptyTitle}>Your library is empty</Text>
+                <Text style={styles.emptySubtitle}>Search for your favourite manga{'\n'}and start building your collection!</Text>
+                <TouchableOpacity
+                  style={styles.emptyAction}
+                  onPress={() => router.push('/(tabs)/search')}
+                  activeOpacity={0.8}
+                >
+                  <Ionicons name="search" size={16} color="#fff" />
+                  <Text style={styles.emptyActionText}>Browse Manga</Text>
+                </TouchableOpacity>
+              </View>
+            )
           }
         />
       )}
@@ -428,380 +464,166 @@ export default function HomeScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-  },
+  container: { flex: 1 },
   backgroundGradient: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    top: 0,
-    height: 300,
+    position: 'absolute', left: 0, right: 0, top: 0, height: 300,
   },
   headerContainer: {
-    paddingTop: 60,
-    paddingHorizontal: 20,
-    paddingBottom: 20,
+    paddingTop: 60, paddingHorizontal: 20, paddingBottom: 20,
   },
   headerTop: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
+    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start',
   },
-  headerTitle: {
-    fontWeight: 'bold',
-    color: '#fff',
-  },
-  headerSub: {
-    color: 'rgba(255,255,255,0.6)',
-    marginTop: 4,
-  },
+  headerTitle: { fontWeight: 'bold', color: '#fff' },
+  headerSub: { color: 'rgba(255,255,255,0.6)', marginTop: 4 },
   headerIcon: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
+    width: 48, height: 48, borderRadius: 24,
     backgroundColor: 'rgba(217, 70, 239, 0.2)',
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: 'center', justifyContent: 'center',
   },
-  list: {
-    paddingHorizontal: 15,
-    paddingBottom: 120,
-  },
-  skeletonGrid: {
+  searchContainer: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 10,
-  },
-  columnWrapper: {
-    gap: 10,
+    alignItems: 'center',
+    marginHorizontal: 15,
     marginBottom: 10,
-  },
-  item: {
-    width: ITEM_WIDTH,
-    borderRadius: 16,
-    overflow: 'hidden',
-    height: ITEM_WIDTH * 1.55,
-  },
-  cover: {
-    width: '100%',
-    height: '100%',
-  },
-  gradientOverlay: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    bottom: 0,
-    height: '60%',
-  },
-  info: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
-    padding: 12,
-  },
-  title: {
-    color: '#fff',
-    fontWeight: 'bold',
-    lineHeight: 18,
-    marginBottom: 6,
-  },
-  metaRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  badge: {
-    backgroundColor: Colors.neon.primary,
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 4,
-  },
-  badgeText: {
-    color: '#fff',
-    fontSize: 10,
-    fontWeight: 'bold',
-  },
-  statusText: {
-    color: Colors.neon.accent,
-    fontSize: 10,
-  },
-  empty: {
-    marginTop: 80,
-    alignItems: 'center',
-    paddingHorizontal: 40,
-  },
-  emptyIconWrapper: {
-    width: 96,
-    height: 96,
-    borderRadius: 48,
-    backgroundColor: 'rgba(217, 70, 239, 0.1)',
+    backgroundColor: 'rgba(255,255,255,0.07)',
+    borderRadius: 12,
     borderWidth: 1,
-    borderColor: 'rgba(217, 70, 239, 0.3)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 20,
+    borderColor: 'rgba(255,255,255,0.08)',
+    paddingHorizontal: 12,
+    height: 40,
   },
-  emptyTitle: {
+  searchIcon: { marginRight: 8 },
+  searchInput: {
+    flex: 1,
     color: '#fff',
-    fontSize: 20,
-    fontWeight: '700',
-    textAlign: 'center',
-  },
-  emptySubtitle: {
-    color: '#555',
     fontSize: 14,
-    marginTop: 8,
-    textAlign: 'center',
-    lineHeight: 20,
+    paddingVertical: 0,
+  },
+  searchClear: { padding: 4 },
+  list: { paddingHorizontal: 15, paddingBottom: 120 },
+  skeletonGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
+  columnWrapper: { gap: 10, marginBottom: 10 },
+  item: {
+    width: ITEM_WIDTH, borderRadius: 16, overflow: 'hidden', height: ITEM_WIDTH * 1.55,
+  },
+  cover: { width: '100%', height: '100%' },
+  gradientOverlay: {
+    position: 'absolute', left: 0, right: 0, bottom: 0, height: '60%',
+  },
+  info: { position: 'absolute', bottom: 0, left: 0, right: 0, padding: 12 },
+  title: { color: '#fff', fontWeight: 'bold', lineHeight: 18, marginBottom: 4 },
+  metaRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  badge: {
+    backgroundColor: Colors.neon.primary, paddingHorizontal: 6,
+    paddingVertical: 2, borderRadius: 4,
+  },
+  badgeText: { color: '#fff', fontSize: 10, fontWeight: 'bold' },
+  statusText: { color: Colors.neon.accent, fontSize: 10 },
+  readRow: { flexDirection: 'row', alignItems: 'center', gap: 3, marginTop: 4 },
+  readText: { color: '#22C55E', fontSize: 10, fontWeight: '600' },
+  empty: { marginTop: 80, alignItems: 'center', paddingHorizontal: 40 },
+  emptyIconWrapper: {
+    width: 96, height: 96, borderRadius: 48,
+    backgroundColor: 'rgba(217, 70, 239, 0.1)',
+    borderWidth: 1, borderColor: 'rgba(217, 70, 239, 0.3)',
+    alignItems: 'center', justifyContent: 'center', marginBottom: 20,
+  },
+  emptyTitle: { color: '#fff', fontSize: 20, fontWeight: '700', textAlign: 'center' },
+  emptySubtitle: {
+    color: '#555', fontSize: 14, marginTop: 8, textAlign: 'center', lineHeight: 20,
   },
   emptyAction: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
+    flexDirection: 'row', alignItems: 'center', gap: 8,
     backgroundColor: Colors.neon.primary,
-    paddingHorizontal: 24,
-    paddingVertical: 12,
-    borderRadius: 14,
-    marginTop: 24,
+    paddingHorizontal: 24, paddingVertical: 12, borderRadius: 14, marginTop: 24,
   },
-  emptyActionText: {
-    color: '#fff',
-    fontWeight: '600',
-    fontSize: 15,
-  },
+  emptyActionText: { color: '#fff', fontWeight: '600', fontSize: 15 },
   modalContainer: {
-    margin: 20,
-    backgroundColor: Colors.neon.surface,
-    borderRadius: 20,
-    padding: 24,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.1)',
+    margin: 20, backgroundColor: Colors.neon.surface,
+    borderRadius: 20, padding: 24,
+    borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)',
   },
-  modalContent: {
-    alignItems: 'center',
-  },
-  modalTitle: {
-    color: '#fff',
-    fontWeight: 'bold',
-    marginTop: 16,
-    textAlign: 'center',
-  },
-  modalSubtitle: {
-    color: '#888',
-    textAlign: 'center',
-    marginTop: 8,
-  },
-  modalActions: {
-    flexDirection: 'row',
-    gap: 12,
-    marginTop: 24,
-    width: '100%',
-  },
-  // New modal styles for RNModal
-  modalOverlay: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  modalBackdrop: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(0, 0, 0, 0.85)',
-  },
+  modalContent: { alignItems: 'center' },
+  modalTitle: { color: '#fff', fontWeight: 'bold', marginTop: 16, textAlign: 'center' },
+  modalSubtitle: { color: '#888', textAlign: 'center', marginTop: 8 },
+  modalActions: { flexDirection: 'row', gap: 12, marginTop: 24, width: '100%' },
+  modalOverlay: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+  modalBackdrop: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.85)' },
   modalBox: {
-    backgroundColor: Colors.neon.surface,
-    borderRadius: 24,
-    padding: 28,
-    margin: 30,
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: '#2a2a35',
-    position: 'relative',
+    backgroundColor: Colors.neon.surface, borderRadius: 24,
+    padding: 28, margin: 30, alignItems: 'center',
+    borderWidth: 1, borderColor: '#2a2a35', position: 'relative',
   },
   closeBtn: {
-    position: 'absolute',
-    top: 12,
-    right: 12,
-    width: 32,
-    height: 32,
-    borderRadius: 16,
+    position: 'absolute', top: 12, right: 12,
+    width: 32, height: 32, borderRadius: 16,
     backgroundColor: 'rgba(255,255,255,0.05)',
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: 'center', justifyContent: 'center',
   },
   cancelBtn: {
-    flex: 1,
-    height: 48,
-    borderRadius: 14,
-    borderWidth: 1.5,
-    borderColor: '#3a3a45',
-    alignItems: 'center',
-    justifyContent: 'center',
+    flex: 1, height: 48, borderRadius: 14,
+    borderWidth: 1.5, borderColor: '#3a3a45',
+    alignItems: 'center', justifyContent: 'center',
   },
-  cancelText: {
-    color: '#888',
-    fontWeight: '600',
-  },
+  cancelText: { color: '#888', fontWeight: '600' },
   deleteBtn: {
-    flex: 1,
-    height: 48,
-    borderRadius: 14,
+    flex: 1, height: 48, borderRadius: 14,
     backgroundColor: Colors.neon.error,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 6,
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
   },
-  deleteText: {
-    color: '#fff',
-    fontWeight: '600',
-  },
-  statsContainer: {
-    flexDirection: 'row',
-    marginTop: 20,
-    gap: 12,
-  },
+  deleteText: { color: '#fff', fontWeight: '600' },
+  statsContainer: { flexDirection: 'row', marginTop: 20, gap: 12 },
   statBox: {
-    flex: 1,
-    backgroundColor: 'rgba(255,255,255,0.05)',
-    borderRadius: 14,
-    padding: 14,
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.08)',
+    flex: 1, backgroundColor: 'rgba(255,255,255,0.05)',
+    borderRadius: 14, padding: 14, alignItems: 'center',
+    borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)',
   },
-  statNumber: {
-    color: '#fff',
-    fontSize: 20,
-    fontWeight: 'bold',
-    marginTop: 8,
-  },
-  statLabel: {
-    color: '#888',
-    fontSize: 11,
-    marginTop: 4,
-  },
-  filterSection: {
-    marginBottom: 8,
-  },
-  filterRow: {
-    paddingHorizontal: 15,
-    gap: 8,
-    alignItems: 'center',
-  },
+  statNumber: { color: '#fff', fontSize: 20, fontWeight: 'bold', marginTop: 8 },
+  statLabel: { color: '#888', fontSize: 11, marginTop: 4 },
+  filterSection: { marginBottom: 8 },
+  filterRow: { paddingHorizontal: 15, gap: 8, alignItems: 'center' },
   filterChip: {
-    paddingHorizontal: 14,
-    paddingVertical: 7,
-    borderRadius: 20,
+    paddingHorizontal: 14, paddingVertical: 7, borderRadius: 20,
     backgroundColor: 'rgba(255,255,255,0.05)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.08)',
+    borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)',
   },
   filterChipActive: {
-    backgroundColor: 'rgba(217, 70, 239, 0.15)',
-    borderColor: Colors.neon.primary,
+    backgroundColor: 'rgba(217, 70, 239, 0.15)', borderColor: Colors.neon.primary,
   },
-  filterChipText: {
-    color: '#555',
-    fontSize: 12,
-    fontWeight: '600',
-  },
-  filterChipTextActive: {
-    color: Colors.neon.primary,
-  },
+  filterChipText: { color: '#555', fontSize: 12, fontWeight: '600' },
+  filterChipTextActive: { color: Colors.neon.primary },
   filterDivider: {
-    width: 1,
-    height: 20,
-    backgroundColor: 'rgba(255,255,255,0.1)',
-    marginHorizontal: 4,
+    width: 1, height: 20, backgroundColor: 'rgba(255,255,255,0.1)', marginHorizontal: 4,
   },
   sortChip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    paddingHorizontal: 12,
-    paddingVertical: 7,
-    borderRadius: 20,
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    paddingHorizontal: 12, paddingVertical: 7, borderRadius: 20,
     backgroundColor: 'rgba(255,255,255,0.05)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.08)',
+    borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)',
   },
   sortChipActive: {
-    backgroundColor: 'rgba(34, 211, 238, 0.1)',
-    borderColor: Colors.neon.accent,
-  },
-  fab: {
-    position: 'absolute',
-    bottom: 100,
-    right: 20,
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    backgroundColor: Colors.neon.primary,
-    justifyContent: 'center',
-    alignItems: 'center',
-    shadowColor: Colors.neon.primary,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.4,
-    shadowRadius: 8,
-    elevation: 8,
+    backgroundColor: 'rgba(34, 211, 238, 0.1)', borderColor: Colors.neon.accent,
   },
   doneBtn: {
     backgroundColor: Colors.neon.primary,
-    paddingHorizontal: 20,
-    paddingVertical: 10,
-    borderRadius: 20,
-    alignItems: 'center',
-    justifyContent: 'center',
+    paddingHorizontal: 20, paddingVertical: 10, borderRadius: 20,
+    alignItems: 'center', justifyContent: 'center',
   },
-  doneBtnText: {
-    color: '#fff',
-    fontWeight: '700',
-    fontSize: 15,
-  },
-  reorderList: {
-    paddingHorizontal: 15,
-    paddingBottom: 120,
-    paddingTop: 8,
-  },
+  doneBtnText: { color: '#fff', fontWeight: '700', fontSize: 15 },
+  reorderList: { paddingHorizontal: 15, paddingBottom: 120, paddingTop: 8 },
   reorderRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#111',
-    borderRadius: 14,
-    marginBottom: 8,
-    padding: 10,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.06)',
+    flexDirection: 'row', alignItems: 'center',
+    backgroundColor: '#111', borderRadius: 14, marginBottom: 8,
+    padding: 10, borderWidth: 1, borderColor: 'rgba(255,255,255,0.06)',
   },
   reorderRowActive: {
-    backgroundColor: '#1a1a2e',
-    borderColor: Colors.neon.primary,
+    backgroundColor: '#1a1a2e', borderColor: Colors.neon.primary,
     shadowColor: Colors.neon.primary,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 8,
+    shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 8, elevation: 8,
   },
-  reorderThumb: {
-    width: 44,
-    height: 60,
-    borderRadius: 8,
-  },
-  reorderInfo: {
-    flex: 1,
-    marginLeft: 12,
-    marginRight: 8,
-  },
-  reorderTitle: {
-    color: '#fff',
-    fontWeight: '600',
-    fontSize: 14,
-    marginBottom: 4,
-  },
-  reorderStatus: {
-    color: '#555',
-    fontSize: 12,
-  },
+  reorderThumb: { width: 44, height: 60, borderRadius: 8 },
+  reorderInfo: { flex: 1, marginLeft: 12, marginRight: 8 },
+  reorderTitle: { color: '#fff', fontWeight: '600', fontSize: 14, marginBottom: 4 },
+  reorderStatus: { color: '#555', fontSize: 12 },
 });

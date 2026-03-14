@@ -1,4 +1,4 @@
-import { deleteSeries, getSeriesById, getVolumes, Series, toggleVolume, toggleVolumeRead, updateSeriesCover, updateSeriesInfo, updateSeriesVolumes, Volume } from '@/components/database';
+import { deleteSeries, getSeriesById, getSeriesSpend, getVolumes, Series, toggleVolume, toggleVolumeRead, updateSeriesCover, updateSeriesInfo, updateSeriesVolumes, Volume } from '@/components/database';
 import { getBestVolumeCount, getVolumesWithCovers, VolumeInfo } from '@/components/googlebooks';
 import { getAniListCover } from '@/components/anilist';
 import { CoverImage } from '@/components/CoverImage';
@@ -30,6 +30,7 @@ export default function SeriesDetailScreen() {
     const [isRefreshing, setIsRefreshing] = useState(false);
     const [expandedSynopsis, setExpandedSynopsis] = useState(false);
     const [deleteModal, setDeleteModal] = useState(false);
+    const [seriesSpend, setSeriesSpend] = useState(0);
     const [toast, setToast] = useState<{ visible: boolean; message: string; type: 'success' | 'error' | 'info' }>({ visible: false, message: '', type: 'success' });
 
     const showToast = (message: string, type: 'success' | 'error' | 'info' = 'success') => {
@@ -50,6 +51,7 @@ export default function SeriesDetailScreen() {
                 // Calculate owned count
                 const owned = volData.filter((v: any) => v.isOwned === 1).length;
                 setOwnedCount(owned);
+                setSeriesSpend(getSeriesSpend(seriesId));
 
                 // If series has no cover, try to fetch one from AniList
                 if (!seriesData.coverImage) {
@@ -98,6 +100,15 @@ export default function SeriesDetailScreen() {
         const totalVols = series?.totalVolumes || 20;
         for (let i = 1; i <= totalVols; i++) {
             toggleVolume(Number(id), i, owned);
+        }
+        loadData();
+    };
+
+    const handleMarkAllRead = (read: boolean) => {
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+        const totalVols = series?.totalVolumes || 20;
+        for (let i = 1; i <= totalVols; i++) {
+            toggleVolumeRead(Number(id), i, read);
         }
         loadData();
     };
@@ -234,10 +245,11 @@ export default function SeriesDetailScreen() {
 
                 <View style={styles.content}>
                     <View style={styles.progressContainer}>
+                        {/* Owned progress */}
                         <View style={styles.progressHeader}>
-                            <Text variant="labelMedium" style={{ color: '#aaa' }}>Collection Progress</Text>
+                            <Text variant="labelMedium" style={{ color: '#aaa' }}>Owned</Text>
                             <Text variant="labelMedium" style={{ color: Colors.neon.primary, fontWeight: 'bold' }}>
-                                {Math.round(progress * 100)}%
+                                {ownedCount} / {series.totalVolumes ?? '?'} · {Math.round(progress * 100)}%
                             </Text>
                         </View>
                         <ProgressBar
@@ -245,14 +257,29 @@ export default function SeriesDetailScreen() {
                             color={isComplete ? '#22C55E' : Colors.neon.primary}
                             style={styles.progress}
                         />
-                        <View style={styles.progressStats}>
-                            <Text style={styles.progressStatText}>
-                                <Text style={{ color: Colors.neon.primary }}>{ownedCount}</Text> owned
-                            </Text>
-                            <Text style={styles.progressStatText}>
-                                <Text style={{ color: '#22C55E' }}>{readCount}</Text> read
+
+                        {/* Read progress */}
+                        <View style={[styles.progressHeader, { marginTop: 14 }]}>
+                            <Text variant="labelMedium" style={{ color: '#aaa' }}>Read</Text>
+                            <Text variant="labelMedium" style={{ color: '#22C55E', fontWeight: 'bold' }}>
+                                {readCount} / {ownedCount} · {ownedCount > 0 ? Math.round((readCount / ownedCount) * 100) : 0}%
                             </Text>
                         </View>
+                        <ProgressBar
+                            progress={ownedCount > 0 ? readCount / ownedCount : 0}
+                            color="#22C55E"
+                            style={styles.progress}
+                        />
+
+                        {/* Spend */}
+                        {seriesSpend > 0 && (
+                            <View style={styles.spendRow}>
+                                <Ionicons name="wallet-outline" size={14} color={Colors.neon.accent} />
+                                <Text style={styles.spendText}>
+                                    Spent <Text style={{ color: Colors.neon.accent, fontWeight: '700' }}>€{seriesSpend.toFixed(2)}</Text> on this series
+                                </Text>
+                            </View>
+                        )}
                     </View>
 
                     {/* Synopsis Section */}

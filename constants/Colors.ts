@@ -39,5 +39,10 @@ export const Colors = {
         accent: '#22D3EE', // Cyan 400
         gradientStart: '#4c1d95',
         gradientEnd: '#be185d',
+        // Per-page gradient accents
+        libraryGradient: '#3b0764',   // violet — Library
+        searchGradient: '#0c2d48',    // navy   — Search
+        wishlistGradient: '#881337',  // rose   — Wishlist
+        statsGradient: '#064e3b',     // emerald— Stats
     }
 };

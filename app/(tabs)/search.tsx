@@ -315,7 +315,7 @@ export default function SearchScreen() {
             </RNModal>
 
             <LinearGradient
-                colors={[Colors.neon.gradientStart, Colors.neon.background]}
+                colors={[Colors.neon.searchGradient, Colors.neon.background]}
                 style={styles.headerGradient}
             />
 
