@@ -1,4 +1,5 @@
 import { deleteSeries, getLibraryStats, getSeriesCount, getSeriesPaginated, getVolumes, LibraryStats, Series } from '@/components/database';
+import { CoverImage } from '@/components/CoverImage';
 import { SkeletonLibraryCard } from '@/components/SkeletonCard';
 import { Toast } from '@/components/Toast';
 import { Colors } from '@/constants/Colors';
@@ -7,7 +8,7 @@ import * as Haptics from 'expo-haptics';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router, useFocusEffect } from 'expo-router';
 import { useCallback, useMemo, useState } from 'react';
-import { Dimensions, FlatList, Image, Pressable, Modal as RNModal, RefreshControl, ScrollView, StyleSheet, TouchableOpacity, View } from 'react-native';
+import { Dimensions, FlatList, Pressable, Modal as RNModal, RefreshControl, ScrollView, StyleSheet, TouchableOpacity, View } from 'react-native';
 import { Text, useTheme } from 'react-native-paper';
 import Animated, { FadeIn, FadeInDown, Layout, SlideOutLeft } from 'react-native-reanimated';
 
@@ -43,7 +44,7 @@ export default function HomeScreen() {
   const [hasMore, setHasMore] = useState(true);
   const [sortBy, setSortBy] = useState<SortOption>('recent');
   const [filterBy, setFilterBy] = useState<FilterOption>('all');
-  const [stats, setStats] = useState<LibraryStats>({ totalOwnedVolumes: 0, totalVolumes: 0, completedSeries: 0, totalSeries: 0 });
+  const [stats, setStats] = useState<LibraryStats>({ totalOwnedVolumes: 0, totalVolumes: 0, completedSeries: 0, totalSeries: 0, totalValue: 0, topGenres: [] });
   const [deleteModal, setDeleteModal] = useState<{ visible: boolean; item: Series | null }>({ visible: false, item: null });
   const [toast, setToast] = useState<{ visible: boolean; message: string; type: 'success' | 'error' | 'info' | 'wishlist' }>({ visible: false, message: '', type: 'success' });
 
@@ -140,7 +141,7 @@ export default function HomeScreen() {
       accessibilityHint="Tap to view details, hold to delete"
       accessibilityRole="button"
     >
-      <Image source={{ uri: item.coverImage }} style={styles.cover} resizeMode="cover" />
+      <CoverImage uri={item.coverImage} style={styles.cover} resizeMode="cover" />
       <LinearGradient
         colors={['transparent', 'rgba(0,0,0,0.9)']}
         style={styles.gradientOverlay}
@@ -149,7 +150,7 @@ export default function HomeScreen() {
         <Text variant="titleSmall" numberOfLines={2} style={styles.title}>{item.title}</Text>
         <View style={styles.metaRow}>
           <View style={styles.badge}>
-            <Text style={styles.badgeText}>{item.totalVolumes || '∞'}</Text>
+            <Text style={styles.badgeText}>{item.totalVolumes ?? '?'}</Text>
           </View>
           <Text variant="labelSmall" style={styles.statusText}>
             {item.status === 'Publishing' ? 'ONGOING' : item.status?.toUpperCase() || ''}

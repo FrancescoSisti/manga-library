@@ -1,11 +1,12 @@
 import { addSeries, getWishlist, removeFromWishlist, WishlistItem as WishlistItemType } from '@/components/database';
+import { CoverImage } from '@/components/CoverImage';
 import { Toast } from '@/components/Toast';
 import { Colors } from '@/constants/Colors';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useFocusEffect } from 'expo-router';
 import { useCallback, useState } from 'react';
-import { Dimensions, FlatList, Image, RefreshControl, StyleSheet, TouchableOpacity, View } from 'react-native';
+import { Dimensions, FlatList, RefreshControl, StyleSheet, TouchableOpacity, View } from 'react-native';
 import { Text, useTheme } from 'react-native-paper';
 import Animated, { FadeIn, Layout, SlideOutRight } from 'react-native-reanimated';
 
@@ -63,7 +64,7 @@ export default function WishlistScreen() {
             layout={Layout.springify()}
             style={styles.cardContainer}
         >
-            <Image source={{ uri: item.coverImage }} style={styles.cardImage} resizeMode="cover" />
+            <CoverImage uri={item.coverImage} style={styles.cardImage} resizeMode="cover" />
             <LinearGradient
                 colors={['transparent', 'rgba(0,0,0,0.95)']}
                 style={styles.cardGradient}

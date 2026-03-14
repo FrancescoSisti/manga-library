@@ -158,6 +158,13 @@ export interface WishlistItem {
 }
 
 export const initWishlistTable = () => {
+    // If the table exists without mangadexId, drop and recreate it
+    try {
+        db.getFirstSync('SELECT mangadexId FROM Wishlist LIMIT 1');
+    } catch (e) {
+        db.execSync('DROP TABLE IF EXISTS Wishlist');
+    }
+
     db.execSync(`
         CREATE TABLE IF NOT EXISTS Wishlist (
             id INTEGER PRIMARY KEY AUTOINCREMENT,

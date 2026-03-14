@@ -1,11 +1,12 @@
 import { deleteSeries, getSeriesById, getVolumes, Series, toggleVolume, toggleVolumeRead, updateSeriesInfo, updateSeriesVolumes, Volume } from '@/components/database';
 import { getBestVolumeCount, getVolumesWithCovers, VolumeInfo } from '@/components/googlebooks';
+import { CoverImage } from '@/components/CoverImage';
 import { Toast } from '@/components/Toast';
 import axios from 'axios';
 import * as Haptics from 'expo-haptics';
 import { useLocalSearchParams, useNavigation, useRouter } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
-import { ActivityIndicator, Alert, Image, Modal, Pressable, ScrollView, StyleSheet, TextInput, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Modal, Pressable, ScrollView, StyleSheet, TextInput, TouchableOpacity, View } from 'react-native';
 import { ProgressBar, Text, useTheme } from 'react-native-paper';
 
 import { Colors } from '@/constants/Colors';
@@ -26,6 +27,7 @@ export default function SeriesDetailScreen() {
     const [newVolumeCount, setNewVolumeCount] = useState('');
     const [isRefreshing, setIsRefreshing] = useState(false);
     const [expandedSynopsis, setExpandedSynopsis] = useState(false);
+    const [deleteModal, setDeleteModal] = useState(false);
     const [toast, setToast] = useState<{ visible: boolean; message: string; type: 'success' | 'error' | 'info' }>({ visible: false, message: '', type: 'success' });
 
     const showToast = (message: string, type: 'success' | 'error' | 'info' = 'success') => {
@@ -130,24 +132,14 @@ export default function SeriesDetailScreen() {
     };
 
     // Delete series
-    const handleDelete = () => {
-        Alert.alert(
-            'Delete Series',
-            `Are you sure you want to delete "${series?.title}"? This action cannot be undone.`,
-            [
-                { text: 'Cancel', style: 'cancel' },
-                {
-                    text: 'Delete',
-                    style: 'destructive',
-                    onPress: () => {
-                        if (series) {
-                            deleteSeries(series.id);
-                            router.back();
-                        }
-                    },
-                },
-            ]
-        );
+    const handleDelete = () => setDeleteModal(true);
+
+    const confirmDelete = () => {
+        if (series) {
+            deleteSeries(series.id);
+            setDeleteModal(false);
+            router.back();
+        }
     };
 
     if (!series) {
@@ -164,43 +156,6 @@ export default function SeriesDetailScreen() {
     return (
         <>
             <ScrollView style={[styles.container, { backgroundColor: theme.colors.background }]}>
-                {/* Edit Modal */}
-                <Modal
-                    visible={editModal}
-                    animationType="fade"
-                    transparent={true}
-                    onRequestClose={() => setEditModal(false)}
-                >
-                    <View style={styles.modalOverlay}>
-                        <Pressable style={styles.modalBackdrop} onPress={() => setEditModal(false)} />
-                        <View style={styles.modalBox}>
-                            <TouchableOpacity style={styles.closeBtn} onPress={() => setEditModal(false)}>
-                                <Ionicons name="close" size={22} color="#888" />
-                            </TouchableOpacity>
-
-                            <Ionicons name="book" size={40} color={Colors.neon.accent} />
-                            <Text variant="titleLarge" style={styles.modalTitle}>Edit Volumes</Text>
-                            <Text variant="bodyMedium" style={styles.modalSubtitle}>
-                                Enter the total number of volumes
-                            </Text>
-
-                            <TextInput
-                                style={styles.volumeInput}
-                                value={newVolumeCount}
-                                onChangeText={setNewVolumeCount}
-                                placeholder={String(series.totalVolumes || 20)}
-                                placeholderTextColor="#555"
-                                keyboardType="number-pad"
-                                cursorColor={Colors.neon.primary}
-                            />
-
-                            <TouchableOpacity style={styles.saveBtn} onPress={handleUpdateVolumes}>
-                                <Text style={styles.saveBtnText}>Save</Text>
-                            </TouchableOpacity>
-                        </View>
-                    </View>
-                </Modal>
-
                 {/* Floating Action Bar */}
                 <View style={styles.floatingBar}>
                     <TouchableOpacity style={styles.floatingBtn} onPress={() => router.back()}>
@@ -232,7 +187,7 @@ export default function SeriesDetailScreen() {
                 </View>
 
                 <View style={styles.header}>
-                    <Image source={{ uri: series.coverImage }} style={styles.banner} blurRadius={15} />
+                    <CoverImage uri={series.coverImage} style={styles.banner} blurRadius={15} />
                     <LinearGradient
                         colors={['transparent', 'rgba(0,0,0,0.6)', theme.colors.background]}
                         locations={[0, 0.5, 1]}
@@ -242,7 +197,7 @@ export default function SeriesDetailScreen() {
                         {/* Cover with glow effect */}
                         <View style={styles.posterWrapper}>
                             <View style={styles.posterGlow} />
-                            <Image source={{ uri: series.coverImage }} style={styles.poster} resizeMode="cover" />
+                            <CoverImage uri={series.coverImage} style={styles.poster} resizeMode="cover" iconSize={40} />
                         </View>
                         <View style={styles.headerText}>
                             <Text variant="headlineSmall" style={styles.title} numberOfLines={2}>{series.title}</Text>
@@ -356,17 +311,12 @@ export default function SeriesDetailScreen() {
                                     accessibilityHint="Tap to toggle owned, hold to toggle read"
                                     accessibilityRole="button"
                                 >
-                                    {coverInfo?.coverUrl ? (
-                                        <Image
-                                            source={{ uri: coverInfo.coverUrl }}
-                                            style={styles.volumeCover}
-                                            resizeMode="cover"
-                                        />
-                                    ) : (
-                                        <View style={[styles.volumeCover, styles.volumePlaceholder]}>
-                                            <Text style={styles.volumePlaceholderText}>{volNum}</Text>
-                                        </View>
-                                    )}
+                                    <CoverImage
+                                        uri={coverInfo?.coverUrl}
+                                        style={styles.volumeCover}
+                                        resizeMode="cover"
+                                        iconSize={20}
+                                    />
 
                                     <LinearGradient
                                         colors={['transparent', 'rgba(0,0,0,0.9)']}
@@ -396,6 +346,78 @@ export default function SeriesDetailScreen() {
                     </View>
                 </View>
             </ScrollView>
+
+            {/* Edit Modal */}
+            <Modal
+                visible={editModal}
+                animationType="fade"
+                transparent={true}
+                onRequestClose={() => setEditModal(false)}
+            >
+                <View style={styles.modalOverlay}>
+                    <Pressable style={styles.modalBackdrop} onPress={() => setEditModal(false)} />
+                    <View style={styles.modalBox}>
+                        <TouchableOpacity style={styles.closeBtn} onPress={() => setEditModal(false)}>
+                            <Ionicons name="close" size={22} color="#888" />
+                        </TouchableOpacity>
+
+                        <Ionicons name="book" size={40} color={Colors.neon.accent} />
+                        <Text variant="titleLarge" style={styles.modalTitle}>Edit Volumes</Text>
+                        <Text variant="bodyMedium" style={styles.modalSubtitle}>
+                            Enter the total number of volumes
+                        </Text>
+
+                        <TextInput
+                            style={styles.volumeInput}
+                            value={newVolumeCount}
+                            onChangeText={setNewVolumeCount}
+                            placeholder={String(series.totalVolumes || 20)}
+                            placeholderTextColor="#555"
+                            keyboardType="number-pad"
+                            cursorColor={Colors.neon.primary}
+                        />
+
+                        <TouchableOpacity style={styles.saveBtn} onPress={handleUpdateVolumes}>
+                            <Text style={styles.saveBtnText}>Save</Text>
+                        </TouchableOpacity>
+                    </View>
+                </View>
+            </Modal>
+
+            {/* Delete Confirmation Modal */}
+            <Modal
+                visible={deleteModal}
+                animationType="fade"
+                transparent={true}
+                onRequestClose={() => setDeleteModal(false)}
+            >
+                <View style={styles.modalOverlay}>
+                    <Pressable style={styles.modalBackdrop} onPress={() => setDeleteModal(false)} />
+                    <View style={styles.modalBox}>
+                        <TouchableOpacity style={styles.closeBtn} onPress={() => setDeleteModal(false)}>
+                            <Ionicons name="close" size={22} color="#888" />
+                        </TouchableOpacity>
+
+                        <View style={styles.deleteIconWrapper}>
+                            <Ionicons name="trash-outline" size={32} color="#EF4444" />
+                        </View>
+                        <Text variant="titleLarge" style={styles.modalTitle}>Delete Series?</Text>
+                        <Text variant="bodyMedium" style={styles.modalSubtitle}>
+                            "{series.title}" and all its volume data will be permanently removed.
+                        </Text>
+
+                        <View style={styles.deleteActions}>
+                            <TouchableOpacity style={styles.cancelBtn} onPress={() => setDeleteModal(false)} activeOpacity={0.8}>
+                                <Text style={styles.cancelBtnText}>Cancel</Text>
+                            </TouchableOpacity>
+                            <TouchableOpacity style={styles.deleteConfirmBtn} onPress={confirmDelete} activeOpacity={0.8}>
+                                <Ionicons name="trash" size={16} color="#fff" />
+                                <Text style={styles.deleteConfirmText}>Delete</Text>
+                            </TouchableOpacity>
+                        </View>
+                    </View>
+                </View>
+            </Modal>
 
             <Toast
                 visible={toast.visible}
@@ -642,6 +664,52 @@ const styles = StyleSheet.create({
         color: '#888',
         textAlign: 'center',
         marginTop: 8,
+        lineHeight: 20,
+    },
+    deleteIconWrapper: {
+        width: 64,
+        height: 64,
+        borderRadius: 32,
+        backgroundColor: 'rgba(239, 68, 68, 0.12)',
+        borderWidth: 1,
+        borderColor: 'rgba(239, 68, 68, 0.3)',
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    deleteActions: {
+        flexDirection: 'row',
+        gap: 12,
+        marginTop: 24,
+        width: '100%',
+    },
+    cancelBtn: {
+        flex: 1,
+        height: 48,
+        borderRadius: 14,
+        borderWidth: 1.5,
+        borderColor: '#3a3a45',
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    cancelBtnText: {
+        color: '#888',
+        fontWeight: '600',
+        fontSize: 15,
+    },
+    deleteConfirmBtn: {
+        flex: 1,
+        height: 48,
+        borderRadius: 14,
+        backgroundColor: '#EF4444',
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: 6,
+    },
+    deleteConfirmText: {
+        color: '#fff',
+        fontWeight: '600',
+        fontSize: 15,
     },
     volumeInput: {
         backgroundColor: 'rgba(255,255,255,0.08)',

@@ -1,12 +1,13 @@
 import { addSeries, getSeriesByTitle, toggleVolume } from '@/components/database';
 import { getBestVolumeCount, ISBNLookupResult, lookupByISBN } from '@/components/googlebooks';
+import { CoverImage } from '@/components/CoverImage';
 import { Toast } from '@/components/Toast';
 import { Colors } from '@/constants/Colors';
 import { Ionicons } from '@expo/vector-icons';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import { useRouter } from 'expo-router';
 import { useState } from 'react';
-import { Image, StyleSheet, TouchableOpacity, View } from 'react-native';
+import { StyleSheet, TouchableOpacity, View } from 'react-native';
 import { ActivityIndicator, Button, Text } from 'react-native-paper';
 
 export default function ScannerScreen() {
@@ -15,6 +16,11 @@ export default function ScannerScreen() {
     const [scanned, setScanned] = useState(false);
     const [loading, setLoading] = useState(false);
     const [result, setResult] = useState<ISBNLookupResult | null>(null);
+    const [toast, setToast] = useState<{ visible: boolean; message: string; type: 'success' | 'error' | 'info' }>({ visible: false, message: '', type: 'success' });
+
+    const showToast = (message: string, type: 'success' | 'error' | 'info') => {
+        setToast({ visible: true, message, type });
+    };
 
     if (!permission) {
         return <View />;
@@ -39,24 +45,15 @@ export default function ScannerScreen() {
             if (dataResult.found) {
                 setResult(dataResult);
             } else {
-                showToast('Manga non trovato', 'error');
+                showToast('Manga not found', 'error');
                 setTimeout(() => setScanned(false), 2000);
             }
         } catch (error) {
-            showToast('Errore durante la scansione', 'error');
+            showToast('Scan error', 'error');
             setScanned(false);
         } finally {
             setLoading(false);
         }
-    };
-
-    const showToast = (message: string, type: 'success' | 'error' | 'info') => {
-        Toast.show({
-            type: type,
-            text1: type === 'success' ? 'Successo' : type === 'error' ? 'Errore' : 'Info',
-            text2: message,
-            position: 'bottom',
-        });
     };
 
     const handleAddToLibrary = async () => {
@@ -94,14 +91,14 @@ export default function ScannerScreen() {
                 await toggleVolume(seriesId, result.volumeNumber, true, result.price);
 
                 if (wasNewSeries) {
-                    showToast(`${result.seriesTitle} aggiunta con Vol. ${result.volumeNumber}!`, 'success');
+                    showToast(`${result.seriesTitle} added with Vol. ${result.volumeNumber}!`, 'success');
                 } else {
-                    showToast(`Vol. ${result.volumeNumber} aggiunto a ${result.seriesTitle}!`, 'success');
+                    showToast(`Vol. ${result.volumeNumber} added to ${result.seriesTitle}!`, 'success');
                 }
             } else if (wasNewSeries) {
-                showToast(`${result.seriesTitle} aggiunta!`, 'success');
+                showToast(`${result.seriesTitle} added!`, 'success');
             } else {
-                showToast(`${result.seriesTitle} è già in libreria`, 'info');
+                showToast(`${result.seriesTitle} is already in your library`, 'info');
             }
 
             // Reset for next scan
@@ -111,7 +108,7 @@ export default function ScannerScreen() {
             }, 1500);
         } catch (error) {
             console.error(error);
-            showToast('Errore durante l\'aggiunta', 'error');
+            showToast('Error adding to library', 'error');
         } finally {
             setLoading(false);
         }
@@ -119,14 +116,21 @@ export default function ScannerScreen() {
 
     return (
         <View style={styles.container}>
+            <Toast
+                visible={toast.visible}
+                message={toast.message}
+                type={toast.type}
+                onHide={() => setToast({ ...toast, visible: false })}
+            />
             {!result ? (
-                <CameraView
-                    style={StyleSheet.absoluteFillObject}
-                    onBarcodeScanned={scanned ? undefined : handleBarCodeScanned}
-                    barcodeScannerSettings={{
-                        barcodeTypes: ["ean13", "ean8"],
-                    }}
-                >
+                <>
+                    <CameraView
+                        style={StyleSheet.absoluteFillObject}
+                        onBarcodeScanned={scanned ? undefined : handleBarCodeScanned}
+                        barcodeScannerSettings={{
+                            barcodeTypes: ["ean13", "ean8"],
+                        }}
+                    />
                     <View style={styles.overlay}>
                         <View style={styles.header}>
                             <TouchableOpacity onPress={() => router.back()} style={styles.closeButton}>
@@ -139,10 +143,10 @@ export default function ScannerScreen() {
                             <Text style={styles.scanText}>Inquadra il codice a barre del manga</Text>
                         </View>
                     </View>
-                </CameraView>
+                </>
             ) : (
                 <View style={styles.resultContainer}>
-                    <Image source={{ uri: result.coverUrl }} style={styles.coverImage} resizeMode="contain" />
+                    <CoverImage uri={result.coverUrl} style={styles.coverImage} resizeMode="contain" iconSize={48} />
                     <Text style={styles.resultTitle}>{result.fullTitle}</Text>
                     {result.seriesTitle && <Text style={styles.resultSeries}>{result.seriesTitle}</Text>}
                     {result.authors && <Text style={styles.resultAuthor}>{result.authors.join(', ')}</Text>}
