@@ -5,7 +5,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useFocusEffect } from 'expo-router';
 import { useCallback, useState } from 'react';
-import { Dimensions, FlatList, Image, StyleSheet, TouchableOpacity, View } from 'react-native';
+import { Dimensions, FlatList, Image, RefreshControl, StyleSheet, TouchableOpacity, View } from 'react-native';
 import { Text, useTheme } from 'react-native-paper';
 import Animated, { FadeIn, Layout, SlideOutRight } from 'react-native-reanimated';
 
@@ -15,6 +15,7 @@ const CARD_WIDTH = (width - 60) / 2;
 export default function WishlistScreen() {
     const theme = useTheme();
     const [wishlist, setWishlist] = useState<WishlistItemType[]>([]);
+    const [refreshing, setRefreshing] = useState(false);
     const [toast, setToast] = useState<{ visible: boolean; message: string; type: 'success' | 'error' | 'info' | 'wishlist' }>({ visible: false, message: '', type: 'success' });
 
     useFocusEffect(
@@ -26,6 +27,12 @@ export default function WishlistScreen() {
     const loadWishlist = () => {
         const items = getWishlist();
         setWishlist(items);
+    };
+
+    const handleRefresh = () => {
+        setRefreshing(true);
+        loadWishlist();
+        setRefreshing(false);
     };
 
     const showToast = (message: string, type: 'success' | 'error' | 'info' | 'wishlist' = 'success') => {
@@ -66,6 +73,8 @@ export default function WishlistScreen() {
                 <TouchableOpacity
                     style={styles.removeBtn}
                     onPress={() => handleRemove(item.mangadexId, item.title)}
+                    accessibilityLabel={`Remove ${item.title} from wishlist`}
+                    accessibilityRole="button"
                 >
                     <Ionicons name="close" size={16} color="#fff" />
                 </TouchableOpacity>
@@ -81,6 +90,8 @@ export default function WishlistScreen() {
                     style={styles.addLibBtn}
                     onPress={() => handleAddToLibrary(item)}
                     activeOpacity={0.8}
+                    accessibilityLabel={`Add ${item.title} to library`}
+                    accessibilityRole="button"
                 >
                     <Ionicons name="add" size={16} color="#fff" />
                     <Text style={styles.addLibText}>Add to Library</Text>
@@ -117,10 +128,12 @@ export default function WishlistScreen() {
 
             {wishlist.length === 0 ? (
                 <View style={styles.emptyState}>
-                    <Ionicons name="heart-outline" size={80} color="#333" />
+                    <View style={styles.emptyIconWrapper}>
+                        <Ionicons name="heart-outline" size={48} color={Colors.neon.primary} />
+                    </View>
                     <Text style={styles.emptyTitle}>Your wishlist is empty</Text>
                     <Text style={styles.emptySubtitle}>
-                        Search for manga and tap the heart to save them here
+                        Search for manga and tap the{'\n'}heart icon to save them here
                     </Text>
                 </View>
             ) : (
@@ -132,6 +145,14 @@ export default function WishlistScreen() {
                     columnWrapperStyle={styles.columnWrapper}
                     renderItem={renderItem}
                     showsVerticalScrollIndicator={false}
+                    refreshControl={
+                        <RefreshControl
+                            refreshing={refreshing}
+                            onRefresh={handleRefresh}
+                            tintColor={Colors.neon.primary}
+                            colors={[Colors.neon.primary]}
+                        />
+                    }
                 />
             )}
         </View>
@@ -179,17 +200,29 @@ const styles = StyleSheet.create({
         paddingBottom: 100,
         paddingHorizontal: 40,
     },
+    emptyIconWrapper: {
+        width: 96,
+        height: 96,
+        borderRadius: 48,
+        backgroundColor: 'rgba(217, 70, 239, 0.1)',
+        borderWidth: 1,
+        borderColor: 'rgba(217, 70, 239, 0.3)',
+        alignItems: 'center',
+        justifyContent: 'center',
+        marginBottom: 20,
+    },
     emptyTitle: {
-        color: '#555',
-        fontSize: 18,
-        fontWeight: '600',
-        marginTop: 20,
+        color: '#fff',
+        fontSize: 20,
+        fontWeight: '700',
+        textAlign: 'center',
     },
     emptySubtitle: {
-        color: '#444',
+        color: '#555',
         fontSize: 14,
         marginTop: 8,
         textAlign: 'center',
+        lineHeight: 20,
     },
     cardContainer: {
         width: CARD_WIDTH,

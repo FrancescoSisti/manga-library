@@ -93,22 +93,22 @@ export default function StatsScreen() {
 
                     {/* Header */}
                     <Animated.View entering={FadeInDown.delay(100)} style={styles.header}>
-                        <Text style={styles.headerTitle}>Statistiche</Text>
-                        <Text style={styles.headerSubtitle}>La tua libreria in numeri</Text>
+                        <Text style={styles.headerTitle}>Statistics</Text>
+                        <Text style={styles.headerSubtitle}>Your library in numbers</Text>
                     </Animated.View>
 
                     {/* Main Stats Grid */}
                     <View style={styles.grid}>
-                        <StatCard title="Volumi Totali" value={stats.totalOwnedVolumes} icon="library" delay={200} isPrimary />
-                        <StatCard title="Serie" value={stats.totalSeries} icon="albums" delay={300} />
-                        <StatCard title="In Wishlist" value={wishlistCount} icon="heart" delay={400} />
-                        <StatCard title="Valore Totale" value={`€${stats.totalValue.toFixed(2)}`} icon="wallet" delay={500} />
+                        <StatCard title="Total Volumes" value={stats.totalOwnedVolumes} icon="library" delay={200} isPrimary />
+                        <StatCard title="Series" value={stats.totalSeries} icon="albums" delay={300} />
+                        <StatCard title="Wishlist" value={wishlistCount} icon="heart" delay={400} />
+                        <StatCard title="Total Value" value={`€${stats.totalValue.toFixed(2)}`} icon="wallet" delay={500} />
                     </View>
 
                     {/* Genre Distribution */}
                     {stats.topGenres.length > 0 && (
                         <Animated.View entering={FadeInDown.delay(600).springify()} style={styles.sectionContainer}>
-                            <Text style={styles.sectionTitle}>Generi Preferiti</Text>
+                            <Text style={styles.sectionTitle}>Top Genres</Text>
                             <View style={styles.glassSection}>
                                 <LinearGradient
                                     colors={['rgba(255,255,255,0.03)', 'rgba(255,255,255,0.01)']}
@@ -131,7 +131,7 @@ export default function StatsScreen() {
 
                     {/* Reading Goal / Completion Status */}
                     <Animated.View entering={FadeInDown.delay(stats.topGenres.length > 0 ? 1000 : 600).springify()} style={styles.sectionContainer}>
-                        <Text style={styles.sectionTitle}>Stato Collezione</Text>
+                        <Text style={styles.sectionTitle}>Collection Status</Text>
                         <View style={styles.goalCard}>
                             <LinearGradient
                                 colors={['rgba(139,92,246,0.15)', 'rgba(139,92,246,0.05)']}
@@ -139,7 +139,7 @@ export default function StatsScreen() {
                                 start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}
                             >
                                 <View style={styles.goalInfo}>
-                                    <Text style={styles.goalText}>Hai collezionato il <Text style={{ color: Colors.neon.accent, fontWeight: 'bold' }}>{completionRate}%</Text> dei volumi totali previsti.</Text>
+                                    <Text style={styles.goalText}>You've collected <Text style={{ color: Colors.neon.accent, fontWeight: 'bold' }}>{completionRate}%</Text> of your expected total volumes.</Text>
                                     <View style={styles.goalProgressTrack}>
                                         <LinearGradient
                                             colors={[Colors.neon.accent, Colors.neon.secondary]}

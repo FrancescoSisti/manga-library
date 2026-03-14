@@ -1,5 +1,7 @@
+import { getCached, setCached } from '@/components/apiCache';
 import { addSeries, addToWishlist, isInLibrary, isInWishlist } from '@/components/database';
 import { getBestVolumeCount } from '@/components/googlebooks';
+import { SkeletonSearchCard } from '@/components/SkeletonCard';
 import { Toast } from '@/components/Toast';
 import { Colors } from '@/constants/Colors';
 import { Ionicons } from '@expo/vector-icons';
@@ -20,7 +22,7 @@ import {
     TouchableOpacity,
     View
 } from 'react-native';
-import { ActivityIndicator, Divider, Text, useTheme } from 'react-native-paper';
+import { Divider, Text, useTheme } from 'react-native-paper';
 import Animated, { FadeIn, Layout } from 'react-native-reanimated';
 
 const { width, height } = Dimensions.get('window');
@@ -53,11 +55,24 @@ export default function SearchScreen() {
 
         const timeoutId = setTimeout(async () => {
             try {
+                const cacheKey = `jikan:${query.trim().toLowerCase()}`;
+                const cached = getCached<any[]>(cacheKey);
+
+                if (cached) {
+                    if (lastRequestRef.current === requestId) {
+                        setResults(cached);
+                        setLoading(false);
+                    }
+                    return;
+                }
+
                 const response = await axios.get(`https://api.jikan.moe/v4/manga?q=${encodeURIComponent(query)}&limit=15`);
+                const data = response.data.data || [];
+                setCached(cacheKey, data);
 
                 // Only update if this is still the latest request
                 if (lastRequestRef.current === requestId) {
-                    setResults(response.data.data || []);
+                    setResults(data);
                     setLoading(false);
                 }
             } catch (error) {
@@ -177,6 +192,8 @@ export default function SearchScreen() {
                                 style={styles.wishlistBtn}
                                 onPress={() => handleAddToWishlist(item)}
                                 activeOpacity={0.7}
+                                accessibilityLabel={`Add ${item.title} to wishlist`}
+                                accessibilityRole="button"
                             >
                                 <Ionicons name="heart-outline" size={20} color={Colors.neon.primary} />
                             </TouchableOpacity>
@@ -184,6 +201,8 @@ export default function SearchScreen() {
                                 style={styles.addBtn}
                                 onPress={() => handleAddSeries(item)}
                                 activeOpacity={0.7}
+                                accessibilityLabel={`Add ${item.title} to library`}
+                                accessibilityRole="button"
                             >
                                 <Ionicons name="add" size={20} color="#fff" />
                                 <Text style={styles.addBtnText}>Add</Text>
@@ -342,17 +361,26 @@ export default function SearchScreen() {
             </View>
 
             {loading && (
-                <View style={styles.loaderContainer}>
-                    <ActivityIndicator animating={true} size="large" color={Colors.neon.primary} />
-                    <Text style={styles.loaderText}>Searching...</Text>
+                <View style={styles.list}>
+                    {Array.from({ length: 5 }).map((_, i) => (
+                        <SkeletonSearchCard key={i} />
+                    ))}
                 </View>
             )}
 
             {!loading && results.length === 0 && (
                 <View style={styles.emptyState}>
-                    <Ionicons name="search-outline" size={60} color="#333" />
-                    <Text style={styles.emptyTitle}>Find Your Next Read</Text>
-                    <Text style={styles.emptySubtitle}>Search by title or author</Text>
+                    <View style={styles.emptyIconWrapper}>
+                        <Ionicons name={query.trim().length >= 2 ? 'alert-circle-outline' : 'search-outline'} size={48} color={Colors.neon.accent} />
+                    </View>
+                    <Text style={styles.emptyTitle}>
+                        {query.trim().length >= 2 ? 'No results found' : 'Find Your Next Read'}
+                    </Text>
+                    <Text style={styles.emptySubtitle}>
+                        {query.trim().length >= 2
+                            ? `No manga matching "${query}"\nTry a different title or author`
+                            : 'Type at least 2 characters\nto start searching'}
+                    </Text>
                 </View>
             )}
 
@@ -428,30 +456,36 @@ const styles = StyleSheet.create({
         alignItems: 'center',
         justifyContent: 'center',
     },
-    loaderContainer: {
-        alignItems: 'center',
-        marginTop: 60,
-    },
-    loaderText: {
-        color: '#555',
-        marginTop: 12,
-    },
     emptyState: {
         flex: 1,
         alignItems: 'center',
         justifyContent: 'center',
         paddingBottom: 120,
+        paddingHorizontal: 40,
+    },
+    emptyIconWrapper: {
+        width: 96,
+        height: 96,
+        borderRadius: 48,
+        backgroundColor: 'rgba(34, 211, 238, 0.1)',
+        borderWidth: 1,
+        borderColor: 'rgba(34, 211, 238, 0.3)',
+        alignItems: 'center',
+        justifyContent: 'center',
+        marginBottom: 20,
     },
     emptyTitle: {
-        color: '#444',
-        fontSize: 18,
-        fontWeight: '600',
-        marginTop: 16,
+        color: '#fff',
+        fontSize: 20,
+        fontWeight: '700',
+        textAlign: 'center',
     },
     emptySubtitle: {
-        color: '#333',
+        color: '#555',
         fontSize: 14,
-        marginTop: 4,
+        marginTop: 8,
+        textAlign: 'center',
+        lineHeight: 20,
     },
     list: {
         paddingHorizontal: 20,

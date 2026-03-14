@@ -1,7 +1,8 @@
-import { deleteSeries, getSeriesById, getVolumes, Series, toggleVolume, updateSeriesInfo, updateSeriesVolumes, Volume } from '@/components/database';
+import { deleteSeries, getSeriesById, getVolumes, Series, toggleVolume, toggleVolumeRead, updateSeriesInfo, updateSeriesVolumes, Volume } from '@/components/database';
 import { getBestVolumeCount, getVolumesWithCovers, VolumeInfo } from '@/components/googlebooks';
 import { Toast } from '@/components/Toast';
 import axios from 'axios';
+import * as Haptics from 'expo-haptics';
 import { useLocalSearchParams, useNavigation, useRouter } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
 import { ActivityIndicator, Alert, Image, Modal, Pressable, ScrollView, StyleSheet, TextInput, TouchableOpacity, View } from 'react-native';
@@ -63,9 +64,18 @@ export default function SeriesDetailScreen() {
     }, [loadData]);
 
     const handleToggleVolume = (volNum: number) => {
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
         const isOwned = volumes.find(v => v.volumeNumber === volNum)?.isOwned === 1;
         toggleVolume(Number(id), volNum, !isOwned);
-        loadData(); // Reload to refresh UI
+        loadData();
+    };
+
+    const handleToggleRead = (volNum: number) => {
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+        const vol = volumes.find(v => v.volumeNumber === volNum);
+        const isRead = vol?.isRead === 1;
+        toggleVolumeRead(Number(id), volNum, !isRead);
+        loadData();
     };
 
     const handleMarkAll = (owned: boolean) => {
@@ -107,13 +117,13 @@ export default function SeriesDetailScreen() {
 
                 // Reload data
                 loadData();
-                showToast('Informazioni aggiornate!', 'success');
+                showToast('Info updated!', 'success');
             } else {
-                showToast('Manga non trovato', 'error');
+                showToast('Manga not found', 'error');
             }
         } catch (error) {
             console.error(error);
-            showToast('Errore di aggiornamento', 'error');
+            showToast('Update error', 'error');
         } finally {
             setIsRefreshing(false);
         }
@@ -122,12 +132,12 @@ export default function SeriesDetailScreen() {
     // Delete series
     const handleDelete = () => {
         Alert.alert(
-            'Elimina Serie',
-            `Sei sicuro di voler eliminare "${series?.title}"? Questa azione non può essere annullata.`,
+            'Delete Series',
+            `Are you sure you want to delete "${series?.title}"? This action cannot be undone.`,
             [
-                { text: 'Annulla', style: 'cancel' },
+                { text: 'Cancel', style: 'cancel' },
                 {
-                    text: 'Elimina',
+                    text: 'Delete',
                     style: 'destructive',
                     onPress: () => {
                         if (series) {
@@ -145,10 +155,11 @@ export default function SeriesDetailScreen() {
     }
 
     // Generate volume grid (assuming max 100 or totalVolumes)
-    const totalVols = series.totalVolumes || 20; // Default to 20 if unknown for now
+    const totalVols = series.totalVolumes || 20;
     const grid = Array.from({ length: totalVols }, (_, i) => i + 1);
     const progress = series.totalVolumes ? ownedCount / series.totalVolumes : 0;
     const isComplete = ownedCount === totalVols;
+    const readCount = volumes.filter(v => v.isRead === 1).length;
 
     return (
         <>
@@ -168,9 +179,9 @@ export default function SeriesDetailScreen() {
                             </TouchableOpacity>
 
                             <Ionicons name="book" size={40} color={Colors.neon.accent} />
-                            <Text variant="titleLarge" style={styles.modalTitle}>Modifica Volumi</Text>
+                            <Text variant="titleLarge" style={styles.modalTitle}>Edit Volumes</Text>
                             <Text variant="bodyMedium" style={styles.modalSubtitle}>
-                                Inserisci il numero totale di volumi
+                                Enter the total number of volumes
                             </Text>
 
                             <TextInput
@@ -184,7 +195,7 @@ export default function SeriesDetailScreen() {
                             />
 
                             <TouchableOpacity style={styles.saveBtn} onPress={handleUpdateVolumes}>
-                                <Text style={styles.saveBtnText}>Salva</Text>
+                                <Text style={styles.saveBtnText}>Save</Text>
                             </TouchableOpacity>
                         </View>
                     </View>
@@ -244,7 +255,7 @@ export default function SeriesDetailScreen() {
                                 {isComplete && (
                                     <View style={[styles.badge, { backgroundColor: '#22C55E', flexDirection: 'row', alignItems: 'center', gap: 3 }]}>
                                         <Ionicons name="checkmark-circle" size={12} color="#fff" />
-                                        <Text variant="labelSmall" style={{ color: '#fff' }}>Completa</Text>
+                                        <Text variant="labelSmall" style={{ color: '#fff' }}>Complete</Text>
                                     </View>
                                 )}
                             </View>
@@ -265,6 +276,14 @@ export default function SeriesDetailScreen() {
                             color={isComplete ? '#22C55E' : Colors.neon.primary}
                             style={styles.progress}
                         />
+                        <View style={styles.progressStats}>
+                            <Text style={styles.progressStatText}>
+                                <Text style={{ color: Colors.neon.primary }}>{ownedCount}</Text> owned
+                            </Text>
+                            <Text style={styles.progressStatText}>
+                                <Text style={{ color: '#22C55E' }}>{readCount}</Text> read
+                            </Text>
+                        </View>
                     </View>
 
                     {/* Synopsis Section */}
@@ -276,7 +295,7 @@ export default function SeriesDetailScreen() {
                             </Text>
                             <TouchableOpacity onPress={() => setExpandedSynopsis(!expandedSynopsis)} style={styles.readMoreBtn}>
                                 <Text style={styles.readMoreText}>
-                                    {expandedSynopsis ? 'Leggi meno' : 'Leggi di più'}
+                                    {expandedSynopsis ? 'Read less' : 'Read more'}
                                 </Text>
                                 <Ionicons name={expandedSynopsis ? 'chevron-up' : 'chevron-down'} size={16} color={Colors.neon.primary} />
                             </TouchableOpacity>
@@ -290,7 +309,7 @@ export default function SeriesDetailScreen() {
                             onPress={() => handleMarkAll(true)}
                         >
                             <Ionicons name="checkmark-done" size={18} color="#22C55E" />
-                            <Text style={[styles.actionBtnText, { color: '#22C55E' }]}>Segna tutti</Text>
+                            <Text style={[styles.actionBtnText, { color: '#22C55E' }]}>Mark All</Text>
                         </TouchableOpacity>
 
                         <TouchableOpacity
@@ -298,22 +317,27 @@ export default function SeriesDetailScreen() {
                             onPress={() => handleMarkAll(false)}
                         >
                             <Ionicons name="close" size={18} color="#EF4444" />
-                            <Text style={[styles.actionBtnText, { color: '#EF4444' }]}>Deseleziona</Text>
+                            <Text style={[styles.actionBtnText, { color: '#EF4444' }]}>Deselect All</Text>
                         </TouchableOpacity>
                     </View>
 
-                    <Text variant="titleMedium" style={styles.sectionTitle}>Volumi</Text>
+                    <View style={styles.volumesHeader}>
+                        <Text variant="titleMedium" style={styles.sectionTitle}>Volumes</Text>
+                        <Text style={styles.volumesHint}>tap = owned · hold = read</Text>
+                    </View>
 
                     {loadingCovers && (
                         <View style={styles.loadingContainer}>
                             <ActivityIndicator size="small" color={Colors.neon.primary} />
-                            <Text style={styles.loadingText}>Caricamento cover...</Text>
+                            <Text style={styles.loadingText}>Loading covers...</Text>
                         </View>
                     )}
 
                     <View style={styles.grid}>
                         {grid.map(volNum => {
-                            const isOwned = volumes.find(v => v.volumeNumber === volNum && v.isOwned === 1);
+                            const vol = volumes.find(v => v.volumeNumber === volNum);
+                            const isOwned = vol?.isOwned === 1;
+                            const isRead = vol?.isRead === 1;
                             const coverInfo = volumeCovers.find(c => c.volumeNumber === volNum);
 
                             return (
@@ -323,8 +347,14 @@ export default function SeriesDetailScreen() {
                                     style={[
                                         styles.volumeCard,
                                         isOwned && styles.volumeCardOwned,
+                                        isRead && styles.volumeCardRead,
                                     ]}
                                     onPress={() => handleToggleVolume(volNum)}
+                                    onLongPress={() => handleToggleRead(volNum)}
+                                    delayLongPress={400}
+                                    accessibilityLabel={`Volume ${volNum}${isOwned ? ', owned' : ''}${isRead ? ', read' : ''}`}
+                                    accessibilityHint="Tap to toggle owned, hold to toggle read"
+                                    accessibilityRole="button"
                                 >
                                     {coverInfo?.coverUrl ? (
                                         <Image
@@ -345,11 +375,18 @@ export default function SeriesDetailScreen() {
 
                                     <View style={styles.volumeInfo}>
                                         <Text style={styles.volumeNumber}>Vol. {volNum}</Text>
-                                        {isOwned && (
-                                            <View style={styles.ownedBadge}>
-                                                <Ionicons name="checkmark" size={10} color="#fff" />
-                                            </View>
-                                        )}
+                                        <View style={styles.volumeBadges}>
+                                            {isRead && (
+                                                <View style={styles.readBadge}>
+                                                    <Ionicons name="eye" size={9} color="#fff" />
+                                                </View>
+                                            )}
+                                            {isOwned && (
+                                                <View style={styles.ownedBadge}>
+                                                    <Ionicons name="checkmark" size={10} color="#fff" />
+                                                </View>
+                                            )}
+                                        </View>
                                     </View>
 
                                     {isOwned && <View style={styles.volumeGlow} />}
@@ -526,9 +563,28 @@ const styles = StyleSheet.create({
         fontWeight: '600',
     },
     sectionTitle: {
-        marginBottom: 15,
+        marginBottom: 0,
         fontWeight: 'bold',
         color: Colors.neon.accent,
+    },
+    volumesHeader: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        marginBottom: 15,
+    },
+    volumesHint: {
+        color: '#444',
+        fontSize: 11,
+    },
+    progressStats: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        marginTop: 10,
+    },
+    progressStatText: {
+        color: '#888',
+        fontSize: 12,
     },
     grid: {
         flexDirection: 'row',
@@ -643,6 +699,9 @@ const styles = StyleSheet.create({
     volumeCardOwned: {
         borderColor: Colors.neon.primary,
     },
+    volumeCardRead: {
+        borderColor: '#22C55E',
+    },
     volumeCover: {
         width: '100%',
         height: '100%',
@@ -671,6 +730,18 @@ const styles = StyleSheet.create({
         right: 6,
         flexDirection: 'row',
         justifyContent: 'space-between',
+        alignItems: 'center',
+    },
+    volumeBadges: {
+        flexDirection: 'row',
+        gap: 3,
+    },
+    readBadge: {
+        backgroundColor: '#22C55E',
+        width: 16,
+        height: 16,
+        borderRadius: 8,
+        justifyContent: 'center',
         alignItems: 'center',
     },
     volumeNumber: {

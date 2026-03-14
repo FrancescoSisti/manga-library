@@ -76,6 +76,15 @@ export const getSeries = (): Series[] => {
     return db.getAllSync<Series>('SELECT * FROM Series ORDER BY createdAt DESC');
 };
 
+export const getSeriesPaginated = (limit: number, offset: number): Series[] => {
+    return db.getAllSync<Series>('SELECT * FROM Series ORDER BY createdAt DESC LIMIT ? OFFSET ?', limit, offset);
+};
+
+export const getSeriesCount = (): number => {
+    const result = db.getFirstSync<{ count: number }>('SELECT COUNT(*) as count FROM Series');
+    return result?.count ?? 0;
+};
+
 export const getSeriesById = (id: number): Series | null => {
     return db.getFirstSync<Series>('SELECT * FROM Series WHERE id = ?', id);
 };
@@ -124,6 +133,15 @@ export const toggleVolume = (seriesId: number, volumeNumber: number, isOwned: bo
         }
     } else {
         return db.runSync('INSERT INTO Volumes (seriesId, volumeNumber, isOwned, price) VALUES (?, ?, ?, ?)', seriesId, volumeNumber, isOwned ? 1 : 0, price || 0);
+    }
+};
+
+export const toggleVolumeRead = (seriesId: number, volumeNumber: number, isRead: boolean) => {
+    const existing = db.getFirstSync('SELECT * FROM Volumes WHERE seriesId = ? AND volumeNumber = ?', seriesId, volumeNumber);
+    if (existing) {
+        return db.runSync('UPDATE Volumes SET isRead = ? WHERE seriesId = ? AND volumeNumber = ?', isRead ? 1 : 0, seriesId, volumeNumber);
+    } else {
+        return db.runSync('INSERT INTO Volumes (seriesId, volumeNumber, isOwned, isRead, price) VALUES (?, ?, 0, ?, 0)', seriesId, volumeNumber, isRead ? 1 : 0);
     }
 };
 

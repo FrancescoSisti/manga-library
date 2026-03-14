@@ -1,24 +1,48 @@
-import { deleteSeries, getLibraryStats, getSeries, LibraryStats, Series } from '@/components/database';
+import { deleteSeries, getLibraryStats, getSeriesCount, getSeriesPaginated, getVolumes, LibraryStats, Series } from '@/components/database';
+import { SkeletonLibraryCard } from '@/components/SkeletonCard';
 import { Toast } from '@/components/Toast';
 import { Colors } from '@/constants/Colors';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router, useFocusEffect } from 'expo-router';
-import { useCallback, useState } from 'react';
-import { Dimensions, FlatList, Image, Pressable, Modal as RNModal, StyleSheet, TouchableOpacity, View } from 'react-native';
+import { useCallback, useMemo, useState } from 'react';
+import { Dimensions, FlatList, Image, Pressable, Modal as RNModal, RefreshControl, ScrollView, StyleSheet, TouchableOpacity, View } from 'react-native';
 import { Text, useTheme } from 'react-native-paper';
 import Animated, { FadeIn, FadeInDown, Layout, SlideOutLeft } from 'react-native-reanimated';
 
 const { width } = Dimensions.get('window');
 const COLUMN_COUNT = 2;
 const ITEM_WIDTH = (width - 50) / COLUMN_COUNT;
+const PAGE_SIZE = 20;
+
+type SortOption = 'recent' | 'az' | 'za' | 'progress';
+type FilterOption = 'all' | 'ongoing' | 'completed';
+
+const SORT_OPTIONS: { key: SortOption; label: string }[] = [
+  { key: 'recent', label: 'Recent' },
+  { key: 'az', label: 'A → Z' },
+  { key: 'za', label: 'Z → A' },
+  { key: 'progress', label: 'Progress' },
+];
+
+const FILTER_OPTIONS: { key: FilterOption; label: string }[] = [
+  { key: 'all', label: 'All' },
+  { key: 'ongoing', label: 'Ongoing' },
+  { key: 'completed', label: 'Completed' },
+];
 
 const AnimatedTouchable = Animated.createAnimatedComponent(TouchableOpacity);
 
 export default function HomeScreen() {
   const theme = useTheme();
   const [series, setSeries] = useState<Series[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [hasMore, setHasMore] = useState(true);
+  const [sortBy, setSortBy] = useState<SortOption>('recent');
+  const [filterBy, setFilterBy] = useState<FilterOption>('all');
   const [stats, setStats] = useState<LibraryStats>({ totalOwnedVolumes: 0, totalVolumes: 0, completedSeries: 0, totalSeries: 0 });
   const [deleteModal, setDeleteModal] = useState<{ visible: boolean; item: Series | null }>({ visible: false, item: null });
   const [toast, setToast] = useState<{ visible: boolean; message: string; type: 'success' | 'error' | 'info' | 'wishlist' }>({ visible: false, message: '', type: 'success' });
@@ -30,10 +54,59 @@ export default function HomeScreen() {
   );
 
   const loadSeries = () => {
-    const data = getSeries();
+    setLoading(true);
+    const data = getSeriesPaginated(PAGE_SIZE, 0);
     setSeries(data);
     setStats(getLibraryStats());
+    const total = getSeriesCount();
+    setHasMore(data.length < total);
+    setLoading(false);
   };
+
+  const loadMore = () => {
+    if (loadingMore || !hasMore) return;
+    setLoadingMore(true);
+    const data = getSeriesPaginated(PAGE_SIZE, series.length);
+    setSeries(prev => [...prev, ...data]);
+    const total = getSeriesCount();
+    setHasMore(series.length + data.length < total);
+    setLoadingMore(false);
+  };
+
+  const handleRefresh = () => {
+    setRefreshing(true);
+    loadSeries();
+    setRefreshing(false);
+  };
+
+  const filteredAndSorted = useMemo(() => {
+    let result = [...series];
+
+    // Filter
+    if (filterBy === 'ongoing') {
+      result = result.filter(s => s.status === 'Publishing' || s.status === 'Ongoing');
+    } else if (filterBy === 'completed') {
+      result = result.filter(s => s.status !== 'Publishing' && s.status !== 'Ongoing');
+    }
+
+    // Sort
+    if (sortBy === 'az') {
+      result.sort((a, b) => a.title.localeCompare(b.title));
+    } else if (sortBy === 'za') {
+      result.sort((a, b) => b.title.localeCompare(a.title));
+    } else if (sortBy === 'progress') {
+      result.sort((a, b) => {
+        const aOwned = getVolumes(a.id).filter(v => v.isOwned === 1).length;
+        const bOwned = getVolumes(b.id).filter(v => v.isOwned === 1).length;
+        const aProgress = a.totalVolumes ? aOwned / a.totalVolumes : 0;
+        const bProgress = b.totalVolumes ? bOwned / b.totalVolumes : 0;
+        return bProgress - aProgress;
+      });
+    }
+    // 'recent' keeps default DESC order from DB
+
+    return result;
+  }, [series, sortBy, filterBy]);
 
   const showToast = (message: string, type: 'success' | 'error' | 'info' | 'wishlist' = 'success') => {
     setToast({ visible: true, message, type });
@@ -63,6 +136,9 @@ export default function HomeScreen() {
       onLongPress={() => handleLongPress(item)}
       delayLongPress={400}
       activeOpacity={0.85}
+      accessibilityLabel={`${item.title}, ${item.totalVolumes || 'unknown'} volumes`}
+      accessibilityHint="Tap to view details, hold to delete"
+      accessibilityRole="button"
     >
       <Image source={{ uri: item.coverImage }} style={styles.cover} resizeMode="cover" />
       <LinearGradient
@@ -122,6 +198,8 @@ export default function HomeScreen() {
                 style={styles.cancelBtn}
                 onPress={() => setDeleteModal({ visible: false, item: null })}
                 activeOpacity={0.8}
+                accessibilityLabel="Cancel"
+                accessibilityRole="button"
               >
                 <Text style={styles.cancelText}>Cancel</Text>
               </TouchableOpacity>
@@ -129,6 +207,8 @@ export default function HomeScreen() {
                 style={styles.deleteBtn}
                 onPress={handleDelete}
                 activeOpacity={0.8}
+                accessibilityLabel={`Confirm remove ${deleteModal.item?.title}`}
+                accessibilityRole="button"
               >
                 <Ionicons name="trash" size={18} color="#fff" />
                 <Text style={styles.deleteText}>Remove</Text>
@@ -162,7 +242,7 @@ export default function HomeScreen() {
             <View style={styles.statBox}>
               <Ionicons name="book" size={20} color={Colors.neon.accent} />
               <Text style={styles.statNumber}>{stats.totalOwnedVolumes}</Text>
-              <Text style={styles.statLabel}>Volumi</Text>
+              <Text style={styles.statLabel}>Volumes</Text>
             </View>
             <View style={styles.statBox}>
               <Ionicons name="checkmark-circle" size={20} color="#22C55E" />
@@ -180,22 +260,92 @@ export default function HomeScreen() {
         )}
       </Animated.View>
 
-      <FlatList
-        data={series}
-        keyExtractor={(item) => item.id.toString()}
-        numColumns={COLUMN_COUNT}
-        contentContainerStyle={styles.list}
-        columnWrapperStyle={styles.columnWrapper}
-        renderItem={renderItem}
-        showsVerticalScrollIndicator={false}
-        ListEmptyComponent={
-          <View style={styles.empty}>
-            <Ionicons name="library-outline" size={60} color="#333" />
-            <Text style={styles.emptyTitle}>No manga yet</Text>
-            <Text style={styles.emptySubtitle}>Go to Search to start your collection!</Text>
-          </View>
-        }
-      />
+      {/* Filter & Sort Bar */}
+      {!loading && series.length > 0 && (
+        <View style={styles.filterSection}>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.filterRow}
+          >
+            {FILTER_OPTIONS.map(opt => (
+              <TouchableOpacity
+                key={opt.key}
+                style={[styles.filterChip, filterBy === opt.key && styles.filterChipActive]}
+                onPress={() => { Haptics.selectionAsync(); setFilterBy(opt.key); }}
+                activeOpacity={0.7}
+              >
+                <Text style={[styles.filterChipText, filterBy === opt.key && styles.filterChipTextActive]}>
+                  {opt.label}
+                </Text>
+              </TouchableOpacity>
+            ))}
+            <View style={styles.filterDivider} />
+            {SORT_OPTIONS.map(opt => (
+              <TouchableOpacity
+                key={opt.key}
+                style={[styles.sortChip, sortBy === opt.key && styles.sortChipActive]}
+                onPress={() => { Haptics.selectionAsync(); setSortBy(opt.key); }}
+                activeOpacity={0.7}
+              >
+                <Ionicons
+                  name={opt.key === 'recent' ? 'time-outline' : opt.key === 'progress' ? 'trending-up-outline' : 'text-outline'}
+                  size={12}
+                  color={sortBy === opt.key ? Colors.neon.accent : '#555'}
+                />
+                <Text style={[styles.filterChipText, sortBy === opt.key && { color: Colors.neon.accent }]}>
+                  {opt.label}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+        </View>
+      )}
+
+      {loading ? (
+        <View style={[styles.list, styles.skeletonGrid]}>
+          {Array.from({ length: 6 }).map((_, i) => (
+            <SkeletonLibraryCard key={i} />
+          ))}
+        </View>
+      ) : (
+        <FlatList
+          data={filteredAndSorted}
+          keyExtractor={(item) => item.id.toString()}
+          numColumns={COLUMN_COUNT}
+          contentContainerStyle={styles.list}
+          columnWrapperStyle={styles.columnWrapper}
+          renderItem={renderItem}
+          showsVerticalScrollIndicator={false}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={handleRefresh}
+              tintColor={Colors.neon.primary}
+              colors={[Colors.neon.primary]}
+            />
+          }
+          onEndReached={loadMore}
+          onEndReachedThreshold={0.3}
+          ListEmptyComponent={
+            <View style={styles.empty}>
+              <View style={styles.emptyIconWrapper}>
+                <Ionicons name="library-outline" size={48} color={Colors.neon.primary} />
+              </View>
+              <Text style={styles.emptyTitle}>Your library is empty</Text>
+              <Text style={styles.emptySubtitle}>Search for your favourite manga{'\n'}and start building your collection!</Text>
+              <TouchableOpacity
+                style={styles.emptyAction}
+                onPress={() => router.push('/(tabs)/search')}
+                activeOpacity={0.8}
+              >
+                <Ionicons name="search" size={16} color="#fff" />
+                <Text style={styles.emptyActionText}>Browse Manga</Text>
+              </TouchableOpacity>
+            </View>
+          }
+        />
+      )}
     </View>
   );
 }
@@ -240,6 +390,11 @@ const styles = StyleSheet.create({
   list: {
     paddingHorizontal: 15,
     paddingBottom: 120,
+  },
+  skeletonGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 10,
   },
   columnWrapper: {
     gap: 10,
@@ -296,19 +451,48 @@ const styles = StyleSheet.create({
     fontSize: 10,
   },
   empty: {
-    marginTop: 100,
+    marginTop: 80,
     alignItems: 'center',
+    paddingHorizontal: 40,
+  },
+  emptyIconWrapper: {
+    width: 96,
+    height: 96,
+    borderRadius: 48,
+    backgroundColor: 'rgba(217, 70, 239, 0.1)',
+    borderWidth: 1,
+    borderColor: 'rgba(217, 70, 239, 0.3)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 20,
   },
   emptyTitle: {
-    color: '#555',
-    fontSize: 18,
-    fontWeight: '600',
-    marginTop: 15,
+    color: '#fff',
+    fontSize: 20,
+    fontWeight: '700',
+    textAlign: 'center',
   },
   emptySubtitle: {
-    color: '#444',
+    color: '#555',
     fontSize: 14,
-    marginTop: 5,
+    marginTop: 8,
+    textAlign: 'center',
+    lineHeight: 20,
+  },
+  emptyAction: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: Colors.neon.primary,
+    paddingHorizontal: 24,
+    paddingVertical: 12,
+    borderRadius: 14,
+    marginTop: 24,
+  },
+  emptyActionText: {
+    color: '#fff',
+    fontWeight: '600',
+    fontSize: 15,
   },
   modalContainer: {
     margin: 20,
@@ -420,6 +604,55 @@ const styles = StyleSheet.create({
     color: '#888',
     fontSize: 11,
     marginTop: 4,
+  },
+  filterSection: {
+    marginBottom: 8,
+  },
+  filterRow: {
+    paddingHorizontal: 15,
+    gap: 8,
+    alignItems: 'center',
+  },
+  filterChip: {
+    paddingHorizontal: 14,
+    paddingVertical: 7,
+    borderRadius: 20,
+    backgroundColor: 'rgba(255,255,255,0.05)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.08)',
+  },
+  filterChipActive: {
+    backgroundColor: 'rgba(217, 70, 239, 0.15)',
+    borderColor: Colors.neon.primary,
+  },
+  filterChipText: {
+    color: '#555',
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  filterChipTextActive: {
+    color: Colors.neon.primary,
+  },
+  filterDivider: {
+    width: 1,
+    height: 20,
+    backgroundColor: 'rgba(255,255,255,0.1)',
+    marginHorizontal: 4,
+  },
+  sortChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: 20,
+    backgroundColor: 'rgba(255,255,255,0.05)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.08)',
+  },
+  sortChipActive: {
+    backgroundColor: 'rgba(34, 211, 238, 0.1)',
+    borderColor: Colors.neon.accent,
   },
   fab: {
     position: 'absolute',
