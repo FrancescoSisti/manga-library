@@ -1,6 +1,5 @@
 import { initDatabase, initWishlistTable } from '@/components/database';
 import { Colors } from '@/constants/Colors';
-import { useColorScheme } from '@/hooks/use-color-scheme';
 import {
     SpaceGrotesk_400Regular,
     SpaceGrotesk_500Medium,
@@ -8,13 +7,22 @@ import {
     SpaceGrotesk_700Bold,
     useFonts,
 } from '@expo-google-fonts/space-grotesk';
-import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native';
+import { DarkTheme, ThemeProvider } from '@react-navigation/native';
 import { SplashScreen, Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect } from 'react';
 import { Text, TextInput } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { configureFonts, MD3DarkTheme, PaperProvider } from 'react-native-paper';
+
+const AppNavigationTheme = {
+    ...DarkTheme,
+    colors: {
+        ...DarkTheme.colors,
+        background: Colors.neon.background,
+        card: Colors.neon.background,
+    },
+};
 
 SplashScreen.preventAutoHideAsync();
 
@@ -43,8 +51,6 @@ export const unstable_settings = {
 };
 
 export default function RootLayout() {
-    const colorScheme = useColorScheme();
-
     const [fontsLoaded] = useFonts({
         SpaceGrotesk_400Regular,
         SpaceGrotesk_500Medium,
@@ -62,9 +68,9 @@ export default function RootLayout() {
             // Apply Space Grotesk globally to every RN Text / TextInput
             // that doesn't already set an explicit fontFamily
             if (!Text.defaultProps) (Text as any).defaultProps = {};
-            (Text as any).defaultProps.style = { fontFamily: 'SpaceGrotesk_400Regular' };
+            (Text as any).defaultProps.style = { fontFamily: 'SpaceGrotesk_400Regular', color: '#FAFAFA' };
             if (!TextInput.defaultProps) (TextInput as any).defaultProps = {};
-            (TextInput as any).defaultProps.style = { fontFamily: 'SpaceGrotesk_400Regular' };
+            (TextInput as any).defaultProps.style = { fontFamily: 'SpaceGrotesk_400Regular', color: '#FAFAFA' };
             SplashScreen.hideAsync();
         }
     }, [fontsLoaded]);
@@ -72,24 +78,24 @@ export default function RootLayout() {
     if (!fontsLoaded) return null;
 
     return (
-        <GestureHandlerRootView style={{ flex: 1 }}>
+        <GestureHandlerRootView style={{ flex: 1, backgroundColor: Colors.neon.background }}>
             <PaperProvider theme={customPaperTheme}>
-                <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
+                <ThemeProvider value={AppNavigationTheme}>
                     <Stack
                         screenOptions={{
                             animation: 'slide_from_right',
                             animationDuration: 300,
                             gestureEnabled: true,
                             gestureDirection: 'horizontal',
+                            contentStyle: { backgroundColor: Colors.neon.background },
                         }}
                     >
-                        <Stack.Screen name="(tabs)" options={{ headerShown: false, animation: 'fade' }} />
+                        <Stack.Screen name="(tabs)" options={{ headerShown: false, animation: 'none' }} />
                         <Stack.Screen
                             name="series/[id]"
                             options={{
                                 headerShown: false,
-                                animation: 'slide_from_bottom',
-                                animationDuration: 400,
+                                animation: 'slide_from_right',
                             }}
                         />
                         <Stack.Screen
