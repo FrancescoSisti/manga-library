@@ -41,6 +41,11 @@ export const initDatabase = () => {
     try {
         db.execSync('ALTER TABLE Volumes ADD COLUMN price REAL DEFAULT 0');
     } catch (e) { /* Column already exists */ }
+
+    // Add sortOrder column to Series
+    try {
+        db.execSync('ALTER TABLE Series ADD COLUMN sortOrder INTEGER DEFAULT 0');
+    } catch (e) { /* Column already exists */ }
 };
 
 export interface Series {
@@ -73,11 +78,22 @@ export const addSeries = (title: string, author: string, totalVolumes: number | 
 };
 
 export const getSeries = (): Series[] => {
-    return db.getAllSync<Series>('SELECT * FROM Series ORDER BY createdAt DESC');
+    return db.getAllSync<Series>(
+        'SELECT * FROM Series ORDER BY CASE WHEN sortOrder > 0 THEN sortOrder ELSE 999999 END ASC, createdAt DESC'
+    );
 };
 
 export const getSeriesPaginated = (limit: number, offset: number): Series[] => {
-    return db.getAllSync<Series>('SELECT * FROM Series ORDER BY createdAt DESC LIMIT ? OFFSET ?', limit, offset);
+    return db.getAllSync<Series>(
+        'SELECT * FROM Series ORDER BY CASE WHEN sortOrder > 0 THEN sortOrder ELSE 999999 END ASC, createdAt DESC LIMIT ? OFFSET ?',
+        limit, offset
+    );
+};
+
+export const updateSeriesSortOrders = (orders: Array<{ id: number; sortOrder: number }>) => {
+    for (const { id, sortOrder } of orders) {
+        db.runSync('UPDATE Series SET sortOrder = ? WHERE id = ?', sortOrder, id);
+    }
 };
 
 export const getSeriesCount = (): number => {

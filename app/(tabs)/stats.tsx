@@ -3,43 +3,49 @@ import { Colors } from '@/constants/Colors';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useFocusEffect } from 'expo-router';
-import React, { useCallback, useState } from 'react';
-import { Dimensions, ScrollView, StatusBar, StyleSheet, Text, View } from 'react-native';
-import Animated, { FadeInDown } from 'react-native-reanimated';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { useCallback, useState } from 'react';
+import { Dimensions, ScrollView, StyleSheet, View } from 'react-native';
+import { Text } from 'react-native-paper';
+import Animated, { FadeIn, FadeInDown } from 'react-native-reanimated';
 
 const { width } = Dimensions.get('window');
 
-function StatCard({ title, value, icon, delay, isPrimary = false }: { title: string, value: string | number, icon: string, delay: number, isPrimary?: boolean }) {
+const GENRE_COLORS = [Colors.neon.primary, Colors.neon.secondary, Colors.neon.accent, '#F43F5E', '#10B981'];
+
+function StatCard({ title, value, icon, color, delay }: {
+    title: string;
+    value: string | number;
+    icon: string;
+    color: string;
+    delay: number;
+}) {
     return (
-        <Animated.View entering={FadeInDown.delay(delay).springify()} style={[styles.cardContainer, isPrimary && styles.cardPrimary]}>
-            <LinearGradient
-                colors={isPrimary
-                    ? [Colors.neon.primary + '20', Colors.neon.secondary + '20']
-                    : ['rgba(255,255,255,0.03)', 'rgba(255,255,255,0.01)']}
-                style={styles.cardGradient}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 1 }}
-            >
-                <View style={styles.cardIcon}>
-                    <Ionicons name={icon as any} size={20} color={isPrimary ? Colors.neon.primary : 'rgba(255,255,255,0.7)'} />
-                </View>
-                <Text style={styles.cardValue}>{value}</Text>
-                <Text style={styles.cardTitle}>{title}</Text>
-            </LinearGradient>
+        <Animated.View entering={FadeInDown.delay(delay).springify()} style={styles.cardContainer}>
+            <View style={[styles.cardIconWrapper, { backgroundColor: color + '20' }]}>
+                <Ionicons name={icon as any} size={22} color={color} />
+            </View>
+            <Text style={styles.cardValue}>{value}</Text>
+            <Text style={styles.cardTitle}>{title}</Text>
         </Animated.View>
     );
 }
 
-function ProgressBar({ label, percent, count, color, delay }: { label: string, percent: number, count: number, color: string, delay: number }) {
+function ProgressBar({ label, percent, count, color, delay }: {
+    label: string;
+    percent: number;
+    count: number;
+    color: string;
+    delay: number;
+}) {
     return (
         <Animated.View entering={FadeInDown.delay(delay).springify()} style={styles.progressRow}>
-            <View style={styles.progressLabelContainer}>
+            <View style={styles.progressLabelRow}>
+                <View style={[styles.progressDot, { backgroundColor: color }]} />
                 <Text style={styles.progressLabel}>{label}</Text>
-                <Text style={styles.progressPercent}>{count} ({percent}%)</Text>
+                <Text style={[styles.progressCount, { color }]}>{count} ({percent}%)</Text>
             </View>
             <View style={styles.progressTrack}>
-                <View style={[styles.progressBar, { width: `${percent}%`, backgroundColor: color, shadowColor: color }]} />
+                <View style={[styles.progressBar, { width: `${percent}%`, backgroundColor: color }]} />
             </View>
         </Animated.View>
     );
@@ -52,109 +58,150 @@ export default function StatsScreen() {
         completedSeries: 0,
         totalSeries: 0,
         totalValue: 0,
-        topGenres: []
+        topGenres: [],
     });
     const [wishlistCount, setWishlistCount] = useState(0);
     const [completionRate, setCompletionRate] = useState(0);
 
     useFocusEffect(
         useCallback(() => {
-            const loadStats = () => {
-                const libStats = getLibraryStats();
-                const wishlist = getWishlist();
-
-                setStats(libStats);
-                setWishlistCount(wishlist.length);
-
-                if (libStats.totalVolumes > 0) {
-                    setCompletionRate(Math.round((libStats.totalOwnedVolumes / libStats.totalVolumes) * 100));
-                } else {
-                    setCompletionRate(0);
-                }
-            };
-
-            loadStats();
+            const libStats = getLibraryStats();
+            const wishlist = getWishlist();
+            setStats(libStats);
+            setWishlistCount(wishlist.length);
+            setCompletionRate(
+                libStats.totalVolumes > 0
+                    ? Math.round((libStats.totalOwnedVolumes / libStats.totalVolumes) * 100)
+                    : 0
+            );
         }, [])
     );
 
-    // Genre colors for visualization
-    const GENRE_COLORS = ['#D946EF', '#8B5CF6', '#22D3EE', '#F43F5E', '#10B981'];
-
     return (
         <View style={styles.container}>
-            <StatusBar barStyle="light-content" />
+            {/* Background gradient matching other pages */}
             <LinearGradient
-                colors={[Colors.neon.background, '#0f0f12']}
-                style={StyleSheet.absoluteFill}
+                colors={[Colors.neon.gradientStart, Colors.neon.background]}
+                style={styles.backgroundGradient}
             />
 
-            <SafeAreaView style={styles.safeArea}>
-                <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
-
-                    {/* Header */}
-                    <Animated.View entering={FadeInDown.delay(100)} style={styles.header}>
-                        <Text style={styles.headerTitle}>Statistics</Text>
-                        <Text style={styles.headerSubtitle}>Your library in numbers</Text>
-                    </Animated.View>
-
-                    {/* Main Stats Grid */}
-                    <View style={styles.grid}>
-                        <StatCard title="Total Volumes" value={stats.totalOwnedVolumes} icon="library" delay={200} isPrimary />
-                        <StatCard title="Series" value={stats.totalSeries} icon="albums" delay={300} />
-                        <StatCard title="Wishlist" value={wishlistCount} icon="heart" delay={400} />
-                        <StatCard title="Total Value" value={`€${stats.totalValue.toFixed(2)}`} icon="wallet" delay={500} />
+            {/* Header */}
+            <Animated.View entering={FadeIn.duration(600)} style={styles.headerContainer}>
+                <View style={styles.headerTop}>
+                    <View>
+                        <Text variant="displaySmall" style={styles.headerTitle}>Statistics</Text>
+                        <Text variant="bodyLarge" style={styles.headerSub}>Your library in numbers</Text>
                     </View>
+                    <View style={styles.headerIcon}>
+                        <Ionicons name="bar-chart" size={24} color={Colors.neon.primary} />
+                    </View>
+                </View>
+            </Animated.View>
 
-                    {/* Genre Distribution */}
-                    {stats.topGenres.length > 0 && (
-                        <Animated.View entering={FadeInDown.delay(600).springify()} style={styles.sectionContainer}>
-                            <Text style={styles.sectionTitle}>Top Genres</Text>
-                            <View style={styles.glassSection}>
-                                <LinearGradient
-                                    colors={['rgba(255,255,255,0.03)', 'rgba(255,255,255,0.01)']}
-                                    style={styles.sectionGradient}
-                                >
-                                    {stats.topGenres.map((g, i) => (
-                                        <ProgressBar
-                                            key={g.name}
-                                            label={g.name}
-                                            percent={g.percent}
-                                            count={g.count}
-                                            color={GENRE_COLORS[i % GENRE_COLORS.length]}
-                                            delay={700 + (i * 100)}
-                                        />
-                                    ))}
-                                </LinearGradient>
+            <ScrollView
+                showsVerticalScrollIndicator={false}
+                contentContainerStyle={styles.scrollContent}
+            >
+                {/* Stat Cards Grid */}
+                <View style={styles.grid}>
+                    <StatCard
+                        title="Volumes Owned"
+                        value={stats.totalOwnedVolumes}
+                        icon="library"
+                        color={Colors.neon.primary}
+                        delay={100}
+                    />
+                    <StatCard
+                        title="Series"
+                        value={stats.totalSeries}
+                        icon="albums"
+                        color={Colors.neon.secondary}
+                        delay={180}
+                    />
+                    <StatCard
+                        title="Completed"
+                        value={stats.completedSeries}
+                        icon="checkmark-circle"
+                        color="#22C55E"
+                        delay={260}
+                    />
+                    <StatCard
+                        title="Wishlist"
+                        value={wishlistCount}
+                        icon="heart"
+                        color="#F43F5E"
+                        delay={340}
+                    />
+                    <StatCard
+                        title="Total Value"
+                        value={`€${stats.totalValue.toFixed(2)}`}
+                        icon="wallet"
+                        color={Colors.neon.accent}
+                        delay={420}
+                    />
+                    <StatCard
+                        title="Progress"
+                        value={`${completionRate}%`}
+                        icon="trending-up"
+                        color="#F59E0B"
+                        delay={500}
+                    />
+                </View>
+
+                {/* Collection Progress */}
+                <Animated.View entering={FadeInDown.delay(580).springify()} style={styles.section}>
+                    <Text variant="titleLarge" style={styles.sectionTitle}>Collection Progress</Text>
+                    <View style={styles.sectionCard}>
+                        <View style={styles.progressSummaryRow}>
+                            <View style={styles.progressSummaryItem}>
+                                <Text style={styles.progressSummaryNumber}>{stats.totalOwnedVolumes}</Text>
+                                <Text style={styles.progressSummaryLabel}>Owned</Text>
                             </View>
-                        </Animated.View>
-                    )}
-
-                    {/* Reading Goal / Completion Status */}
-                    <Animated.View entering={FadeInDown.delay(stats.topGenres.length > 0 ? 1000 : 600).springify()} style={styles.sectionContainer}>
-                        <Text style={styles.sectionTitle}>Collection Status</Text>
-                        <View style={styles.goalCard}>
+                            <View style={styles.progressSummaryDivider} />
+                            <View style={styles.progressSummaryItem}>
+                                <Text style={styles.progressSummaryNumber}>{stats.totalVolumes}</Text>
+                                <Text style={styles.progressSummaryLabel}>Total</Text>
+                            </View>
+                            <View style={styles.progressSummaryDivider} />
+                            <View style={styles.progressSummaryItem}>
+                                <Text style={[styles.progressSummaryNumber, { color: Colors.neon.accent }]}>
+                                    {completionRate}%
+                                </Text>
+                                <Text style={styles.progressSummaryLabel}>Complete</Text>
+                            </View>
+                        </View>
+                        <View style={styles.bigProgressTrack}>
                             <LinearGradient
-                                colors={['rgba(139,92,246,0.15)', 'rgba(139,92,246,0.05)']}
-                                style={styles.goalGradient}
-                                start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}
-                            >
-                                <View style={styles.goalInfo}>
-                                    <Text style={styles.goalText}>You've collected <Text style={{ color: Colors.neon.accent, fontWeight: 'bold' }}>{completionRate}%</Text> of your expected total volumes.</Text>
-                                    <View style={styles.goalProgressTrack}>
-                                        <LinearGradient
-                                            colors={[Colors.neon.accent, Colors.neon.secondary]}
-                                            style={[styles.goalProgressBar, { width: `${Math.min(completionRate, 100)}%` }]}
-                                            start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}
-                                        />
-                                    </View>
-                                </View>
-                            </LinearGradient>
+                                colors={[Colors.neon.accent, Colors.neon.secondary]}
+                                style={[styles.bigProgressBar, { width: `${Math.min(completionRate, 100)}%` }]}
+                                start={{ x: 0, y: 0 }}
+                                end={{ x: 1, y: 0 }}
+                            />
+                        </View>
+                    </View>
+                </Animated.View>
+
+                {/* Top Genres */}
+                {stats.topGenres.length > 0 && (
+                    <Animated.View entering={FadeInDown.delay(660).springify()} style={styles.section}>
+                        <Text variant="titleLarge" style={styles.sectionTitle}>Top Genres</Text>
+                        <View style={styles.sectionCard}>
+                            {stats.topGenres.map((g, i) => (
+                                <ProgressBar
+                                    key={g.name}
+                                    label={g.name}
+                                    percent={g.percent}
+                                    count={g.count}
+                                    color={GENRE_COLORS[i % GENRE_COLORS.length]}
+                                    delay={740 + i * 80}
+                                />
+                            ))}
                         </View>
                     </Animated.View>
+                )}
 
-                    <View style={{ height: 100 }} />
-                </ScrollView>
-            </SafeAreaView>
+                <View style={{ height: 120 }} />
+            </ScrollView>
         </View>
     );
 }
@@ -164,145 +211,161 @@ const styles = StyleSheet.create({
         flex: 1,
         backgroundColor: Colors.neon.background,
     },
-    safeArea: {
-        flex: 1,
+    backgroundGradient: {
+        position: 'absolute',
+        left: 0,
+        right: 0,
+        top: 0,
+        height: 300,
     },
-    scrollContent: {
-        padding: 20,
+    headerContainer: {
+        paddingTop: 60,
+        paddingHorizontal: 20,
+        paddingBottom: 20,
     },
-    header: {
-        marginBottom: 30,
+    headerTop: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'flex-start',
     },
     headerTitle: {
-        fontSize: 34,
-        fontWeight: '800',
-        color: '#FFF',
-        letterSpacing: -0.5,
+        fontWeight: 'bold',
+        color: '#fff',
     },
-    headerSubtitle: {
-        fontSize: 16,
-        color: 'rgba(255,255,255,0.5)',
+    headerSub: {
+        color: 'rgba(255,255,255,0.6)',
         marginTop: 4,
+    },
+    headerIcon: {
+        width: 48,
+        height: 48,
+        borderRadius: 24,
+        backgroundColor: 'rgba(217, 70, 239, 0.2)',
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    scrollContent: {
+        paddingHorizontal: 15,
+        paddingBottom: 20,
     },
     grid: {
         flexDirection: 'row',
         flexWrap: 'wrap',
-        gap: 12,
-        marginBottom: 30,
-    },
-    cardContainer: {
-        width: (width - 52) / 2, // 2 columns with padding/gap
-        height: 110,
-        borderRadius: 20,
-        overflow: 'hidden',
-        backgroundColor: '#18181B', // Fallback
-        borderWidth: 1,
-        borderColor: 'rgba(255,255,255,0.08)',
-    },
-    cardPrimary: {
-        borderColor: Colors.neon.primary + '50',
-    },
-    cardGradient: {
-        flex: 1,
-        padding: 16,
-        justifyContent: 'space-between',
-    },
-    cardIcon: {
-        width: 32,
-        height: 32,
-        borderRadius: 16,
-        backgroundColor: 'rgba(255,255,255,0.05)',
-        alignItems: 'center',
-        justifyContent: 'center',
-    },
-    cardValue: {
-        fontSize: 24,
-        fontWeight: 'bold',
-        color: '#FFF',
-        marginTop: 8,
-    },
-    cardTitle: {
-        fontSize: 12,
-        color: 'rgba(255,255,255,0.5)',
-        fontWeight: '500',
-    },
-    sectionContainer: {
+        gap: 10,
         marginBottom: 24,
     },
-    sectionTitle: {
-        fontSize: 20,
-        fontWeight: '700',
-        color: '#FFF',
-        marginBottom: 12,
-        marginLeft: 4,
-    },
-    glassSection: {
-        borderRadius: 24,
-        overflow: 'hidden',
-        backgroundColor: '#18181B',
+    cardContainer: {
+        width: (width - 50) / 3,
+        backgroundColor: '#111',
+        borderRadius: 16,
         borderWidth: 1,
-        borderColor: 'rgba(255,255,255,0.08)',
+        borderColor: 'rgba(255,255,255,0.07)',
+        padding: 14,
+        alignItems: 'flex-start',
     },
-    sectionGradient: {
+    cardIconWrapper: {
+        width: 38,
+        height: 38,
+        borderRadius: 12,
+        alignItems: 'center',
+        justifyContent: 'center',
+        marginBottom: 10,
+    },
+    cardValue: {
+        fontSize: 20,
+        fontWeight: '800',
+        color: '#fff',
+        marginBottom: 3,
+    },
+    cardTitle: {
+        fontSize: 11,
+        color: '#555',
+        fontWeight: '500',
+    },
+    section: {
+        marginBottom: 20,
+    },
+    sectionTitle: {
+        fontWeight: '700',
+        color: '#fff',
+        marginBottom: 12,
+        marginLeft: 2,
+    },
+    sectionCard: {
+        backgroundColor: '#111',
+        borderRadius: 20,
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.07)',
         padding: 20,
+    },
+    progressSummaryRow: {
+        flexDirection: 'row',
+        justifyContent: 'space-around',
+        marginBottom: 20,
+    },
+    progressSummaryItem: {
+        alignItems: 'center',
+        flex: 1,
+    },
+    progressSummaryNumber: {
+        color: '#fff',
+        fontSize: 22,
+        fontWeight: '800',
+        marginBottom: 4,
+    },
+    progressSummaryLabel: {
+        color: '#555',
+        fontSize: 12,
+        fontWeight: '500',
+    },
+    progressSummaryDivider: {
+        width: 1,
+        backgroundColor: 'rgba(255,255,255,0.07)',
+        marginVertical: 4,
+    },
+    bigProgressTrack: {
+        height: 8,
+        backgroundColor: 'rgba(255,255,255,0.07)',
+        borderRadius: 4,
+        overflow: 'hidden',
+    },
+    bigProgressBar: {
+        height: '100%',
+        borderRadius: 4,
     },
     progressRow: {
         marginBottom: 16,
     },
-    progressLabelContainer: {
+    progressLabelRow: {
         flexDirection: 'row',
-        justifyContent: 'space-between',
+        alignItems: 'center',
         marginBottom: 8,
+        gap: 8,
+    },
+    progressDot: {
+        width: 8,
+        height: 8,
+        borderRadius: 4,
     },
     progressLabel: {
         color: 'rgba(255,255,255,0.8)',
         fontSize: 14,
+        flex: 1,
         fontWeight: '500',
     },
-    progressPercent: {
-        color: '#FFF',
-        fontSize: 14,
-        fontWeight: 'bold',
+    progressCount: {
+        fontSize: 13,
+        fontWeight: '700',
     },
     progressTrack: {
-        height: 6,
-        backgroundColor: 'rgba(255,255,255,0.1)',
+        height: 5,
+        backgroundColor: 'rgba(255,255,255,0.07)',
         borderRadius: 3,
         overflow: 'hidden',
+        marginLeft: 16,
     },
     progressBar: {
         height: '100%',
         borderRadius: 3,
-        shadowOffset: { width: 0, height: 0 },
-        shadowOpacity: 0.5,
-        shadowRadius: 4,
     },
-    goalCard: {
-        borderRadius: 24,
-        overflow: 'hidden',
-        borderWidth: 1,
-        borderColor: 'rgba(139,92,246,0.3)',
-    },
-    goalGradient: {
-        padding: 24,
-    },
-    goalInfo: {
-        width: '100%',
-    },
-    goalText: {
-        color: '#E4E4E7',
-        fontSize: 16,
-        marginBottom: 16,
-        lineHeight: 24,
-    },
-    goalProgressTrack: {
-        height: 8,
-        backgroundColor: 'rgba(0,0,0,0.3)',
-        borderRadius: 4,
-        overflow: 'hidden',
-    },
-    goalProgressBar: {
-        height: '100%',
-        borderRadius: 4,
-    }
 });

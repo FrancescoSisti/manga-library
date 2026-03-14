@@ -5,6 +5,7 @@ import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect } from 'react';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { MD3DarkTheme, PaperProvider } from 'react-native-paper';
 import 'react-native-reanimated';
 
@@ -36,6 +37,7 @@ export default function RootLayout() {
   }, []);
 
   return (
+    <GestureHandlerRootView style={{ flex: 1 }}>
     <PaperProvider theme={customPaperTheme}>
       <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
         <Stack
@@ -68,5 +70,6 @@ export default function RootLayout() {
         <StatusBar style="light" />
       </ThemeProvider>
     </PaperProvider>
+    </GestureHandlerRootView>
   );
 }

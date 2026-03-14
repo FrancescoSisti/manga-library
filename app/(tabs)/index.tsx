@@ -1,4 +1,4 @@
-import { deleteSeries, getLibraryStats, getSeriesCount, getSeriesPaginated, getVolumes, LibraryStats, Series } from '@/components/database';
+import { deleteSeries, getLibraryStats, getSeries, getSeriesCount, getSeriesPaginated, getVolumes, LibraryStats, Series, updateSeriesSortOrders } from '@/components/database';
 import { CoverImage } from '@/components/CoverImage';
 import { SkeletonLibraryCard } from '@/components/SkeletonCard';
 import { Toast } from '@/components/Toast';
@@ -10,6 +10,7 @@ import { router, useFocusEffect } from 'expo-router';
 import { useCallback, useMemo, useState } from 'react';
 import { Dimensions, FlatList, Pressable, Modal as RNModal, RefreshControl, ScrollView, StyleSheet, TouchableOpacity, View } from 'react-native';
 import { Text, useTheme } from 'react-native-paper';
+import DraggableFlatList, { RenderItemParams, ScaleDecorator } from 'react-native-draggable-flatlist';
 import Animated, { FadeIn, FadeInDown, Layout, SlideOutLeft } from 'react-native-reanimated';
 
 const { width } = Dimensions.get('window');
@@ -47,6 +48,8 @@ export default function HomeScreen() {
   const [stats, setStats] = useState<LibraryStats>({ totalOwnedVolumes: 0, totalVolumes: 0, completedSeries: 0, totalSeries: 0, totalValue: 0, topGenres: [] });
   const [deleteModal, setDeleteModal] = useState<{ visible: boolean; item: Series | null }>({ visible: false, item: null });
   const [toast, setToast] = useState<{ visible: boolean; message: string; type: 'success' | 'error' | 'info' | 'wishlist' }>({ visible: false, message: '', type: 'success' });
+  const [isReorderMode, setIsReorderMode] = useState(false);
+  const [reorderData, setReorderData] = useState<Series[]>([]);
 
   useFocusEffect(
     useCallback(() => {
@@ -113,6 +116,22 @@ export default function HomeScreen() {
     setToast({ visible: true, message, type });
   };
 
+  const enterReorderMode = () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    const all = getSeries();
+    setReorderData(all);
+    setIsReorderMode(true);
+  };
+
+  const saveReorderAndExit = () => {
+    updateSeriesSortOrders(reorderData.map((s, i) => ({ id: s.id, sortOrder: i + 1 })));
+    setSeries(reorderData);
+    setHasMore(false);
+    setIsReorderMode(false);
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    showToast('Order saved', 'success');
+  };
+
   const handleLongPress = (item: Series) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     setDeleteModal({ visible: true, item });
@@ -126,6 +145,25 @@ export default function HomeScreen() {
       showToast(`${deleteModal.item.title} removed from library`, 'info');
     }
   };
+
+  const renderReorderItem = ({ item, drag, isActive }: RenderItemParams<Series>) => (
+    <ScaleDecorator activeScale={1.03}>
+      <TouchableOpacity
+        onLongPress={drag}
+        disabled={isActive}
+        activeOpacity={0.85}
+        style={[styles.reorderRow, isActive && styles.reorderRowActive]}
+      >
+        <Ionicons name="reorder-three" size={28} color={isActive ? Colors.neon.primary : '#444'} style={{ marginRight: 12 }} />
+        <CoverImage uri={item.coverImage} style={styles.reorderThumb} resizeMode="cover" />
+        <View style={styles.reorderInfo}>
+          <Text numberOfLines={1} style={styles.reorderTitle}>{item.title}</Text>
+          <Text style={styles.reorderStatus}>{item.status || '—'}</Text>
+        </View>
+        <Ionicons name="chevron-expand-outline" size={18} color="#333" />
+      </TouchableOpacity>
+    </ScaleDecorator>
+  );
 
   const renderItem = ({ item, index }: { item: Series; index: number }) => (
     <AnimatedTouchable
@@ -227,18 +265,44 @@ export default function HomeScreen() {
       <Animated.View entering={FadeIn.duration(600)} style={styles.headerContainer}>
         <View style={styles.headerTop}>
           <View>
-            <Text variant="displaySmall" style={styles.headerTitle}>My Library</Text>
+            <Text variant="displaySmall" style={styles.headerTitle}>
+              {isReorderMode ? 'Reorder Library' : 'My Library'}
+            </Text>
             <Text variant="bodyLarge" style={styles.headerSub}>
-              {series.length} {series.length === 1 ? 'Series' : 'Series'} Collected
+              {isReorderMode
+                ? 'Long press and drag to reorder'
+                : `${series.length} ${series.length === 1 ? 'Series' : 'Series'} Collected`}
             </Text>
           </View>
-          <View style={styles.headerIcon}>
-            <Ionicons name="library" size={24} color={Colors.neon.primary} />
-          </View>
+          {isReorderMode ? (
+            <TouchableOpacity
+              style={styles.doneBtn}
+              onPress={saveReorderAndExit}
+              activeOpacity={0.8}
+            >
+              <Text style={styles.doneBtnText}>Done</Text>
+            </TouchableOpacity>
+          ) : (
+            <View style={{ flexDirection: 'row', gap: 10 }}>
+              {series.length > 1 && (
+                <TouchableOpacity
+                  style={styles.headerIcon}
+                  onPress={enterReorderMode}
+                  activeOpacity={0.7}
+                  accessibilityLabel="Reorder library"
+                >
+                  <Ionicons name="swap-vertical-outline" size={22} color={Colors.neon.primary} />
+                </TouchableOpacity>
+              )}
+              <View style={styles.headerIcon}>
+                <Ionicons name="library" size={24} color={Colors.neon.primary} />
+              </View>
+            </View>
+          )}
         </View>
 
         {/* Stats Section */}
-        {series.length > 0 && (
+        {series.length > 0 && !isReorderMode && (
           <View style={styles.statsContainer}>
             <View style={styles.statBox}>
               <Ionicons name="book" size={20} color={Colors.neon.accent} />
@@ -262,7 +326,7 @@ export default function HomeScreen() {
       </Animated.View>
 
       {/* Filter & Sort Bar */}
-      {!loading && series.length > 0 && (
+      {!loading && series.length > 0 && !isReorderMode && (
         <View style={styles.filterSection}>
           <ScrollView
             horizontal
@@ -309,6 +373,18 @@ export default function HomeScreen() {
             <SkeletonLibraryCard key={i} />
           ))}
         </View>
+      ) : isReorderMode ? (
+        <DraggableFlatList
+          data={reorderData}
+          keyExtractor={(item) => item.id.toString()}
+          onDragEnd={({ data }) => {
+            setReorderData(data);
+            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+          }}
+          renderItem={renderReorderItem}
+          contentContainerStyle={styles.reorderList}
+          showsVerticalScrollIndicator={false}
+        />
       ) : (
         <FlatList
           data={filteredAndSorted}
@@ -670,5 +746,62 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.4,
     shadowRadius: 8,
     elevation: 8,
+  },
+  doneBtn: {
+    backgroundColor: Colors.neon.primary,
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    borderRadius: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  doneBtnText: {
+    color: '#fff',
+    fontWeight: '700',
+    fontSize: 15,
+  },
+  reorderList: {
+    paddingHorizontal: 15,
+    paddingBottom: 120,
+    paddingTop: 8,
+  },
+  reorderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#111',
+    borderRadius: 14,
+    marginBottom: 8,
+    padding: 10,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.06)',
+  },
+  reorderRowActive: {
+    backgroundColor: '#1a1a2e',
+    borderColor: Colors.neon.primary,
+    shadowColor: Colors.neon.primary,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 8,
+  },
+  reorderThumb: {
+    width: 44,
+    height: 60,
+    borderRadius: 8,
+  },
+  reorderInfo: {
+    flex: 1,
+    marginLeft: 12,
+    marginRight: 8,
+  },
+  reorderTitle: {
+    color: '#fff',
+    fontWeight: '600',
+    fontSize: 14,
+    marginBottom: 4,
+  },
+  reorderStatus: {
+    color: '#555',
+    fontSize: 12,
   },
 });
