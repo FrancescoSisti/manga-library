@@ -139,6 +139,10 @@ export const getSeriesSpend = (seriesId: number): number => {
     return r?.total ?? 0;
 };
 
+export const setSeriesVolumePrice = (seriesId: number, price: number) => {
+    db.runSync('UPDATE Volumes SET price = ? WHERE seriesId = ?', price, seriesId);
+};
+
 export const toggleVolume = (seriesId: number, volumeNumber: number, isOwned: boolean, price?: number) => {
     const existing = db.getFirstSync('SELECT * FROM Volumes WHERE seriesId = ? AND volumeNumber = ?', seriesId, volumeNumber);
     if (existing) {

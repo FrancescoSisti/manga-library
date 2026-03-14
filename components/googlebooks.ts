@@ -232,6 +232,56 @@ export async function getVolumesWithCovers(
     }
 }
 
+/**
+ * Cerca il prezzo di copertina FISICO per una serie su Google Books (mercato IT).
+ * Filtra esplicitamente gli ebook (isEbook: true) e restituisce il primo prezzo
+ * retail o list trovato per un'edizione cartacea, oppure null.
+ */
+export async function getSuggestedPrice(seriesTitle: string): Promise<number | null> {
+    const cleanTitle = seriesTitle
+        .replace(/\s*\(manga\)/i, '')
+        .replace(/\s*manga$/i, '')
+        .trim();
+
+    // Prova prima ricerca stretta (vol 1), poi più larga (solo titolo)
+    const queries = [
+        `"${cleanTitle}" vol 1`,
+        `${cleanTitle} manga vol`,
+    ];
+
+    for (const q of queries) {
+        const params: any = {
+            q,
+            maxResults: 20,
+            printType: 'books',
+            country: 'IT',
+        };
+        if (API_KEY) params.key = API_KEY;
+
+        try {
+            const data = await fetchWithRetry<any>(GOOGLE_BOOKS_API, { params });
+            if (!data.items) continue;
+
+            for (const item of data.items) {
+                const title = (item.volumeInfo?.title || '').toLowerCase();
+                if (!title.includes(cleanTitle.toLowerCase())) continue;
+
+                const saleInfo = item.saleInfo;
+                // Salta esplicitamente gli ebook
+                if (saleInfo?.isEbook === true) continue;
+                if (saleInfo?.saleability === 'NOT_FOR_SALE') continue;
+
+                if (saleInfo?.retailPrice?.amount) return saleInfo.retailPrice.amount;
+                if (saleInfo?.listPrice?.amount) return saleInfo.listPrice.amount;
+            }
+        } catch {
+            continue;
+        }
+    }
+
+    return null;
+}
+
 export interface ISBNLookupResult {
     found: boolean;
     seriesTitle?: string;

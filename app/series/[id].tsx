@@ -1,5 +1,5 @@
-import { deleteSeries, getSeriesById, getSeriesSpend, getVolumes, Series, toggleVolume, toggleVolumeRead, updateSeriesCover, updateSeriesInfo, updateSeriesVolumes, Volume } from '@/components/database';
-import { getBestVolumeCount, getVolumesWithCovers, VolumeInfo } from '@/components/googlebooks';
+import { deleteSeries, getSeriesById, getSeriesSpend, getVolumes, Series, setSeriesVolumePrice, toggleVolume, toggleVolumeRead, updateSeriesCover, updateSeriesInfo, updateSeriesVolumes, Volume } from '@/components/database';
+import { getBestVolumeCount, getSuggestedPrice, getVolumesWithCovers, VolumeInfo } from '@/components/googlebooks';
 import { getAniListCover } from '@/components/anilist';
 import { CoverImage } from '@/components/CoverImage';
 import { Toast } from '@/components/Toast';
@@ -30,6 +30,10 @@ export default function SeriesDetailScreen() {
     const [isRefreshing, setIsRefreshing] = useState(false);
     const [expandedSynopsis, setExpandedSynopsis] = useState(false);
     const [deleteModal, setDeleteModal] = useState(false);
+    const [priceModal, setPriceModal] = useState(false);
+    const [fetchingPrice, setFetchingPrice] = useState(false);
+    const [suggestedPrice, setSuggestedPrice] = useState<number | null>(null);
+    const [manualPrice, setManualPrice] = useState('');
     const [seriesSpend, setSeriesSpend] = useState(0);
     const [toast, setToast] = useState<{ visible: boolean; message: string; type: 'success' | 'error' | 'info' }>({ visible: false, message: '', type: 'success' });
 
@@ -156,6 +160,25 @@ export default function SeriesDetailScreen() {
         }
     };
 
+    const handleFetchPrice = async () => {
+        if (!series) return;
+        setFetchingPrice(true);
+        setSuggestedPrice(null);
+        const price = await getSuggestedPrice(series.title);
+        setSuggestedPrice(price);
+        if (price) setManualPrice(price.toFixed(2));
+        setFetchingPrice(false);
+    };
+
+    const handleApplyPrice = () => {
+        const price = parseFloat(manualPrice.replace(',', '.'));
+        if (!series || isNaN(price) || price < 0) return;
+        setSeriesVolumePrice(series.id, price);
+        loadData();
+        setPriceModal(false);
+        showToast('Price updated!', 'success');
+    };
+
     // Delete series
     const handleDelete = () => setDeleteModal(true);
 
@@ -204,6 +227,12 @@ export default function SeriesDetailScreen() {
                             ) : (
                                 <Ionicons name="refresh" size={20} color={Colors.neon.primary} />
                             )}
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                            style={styles.floatingBtn}
+                            onPress={() => { setSuggestedPrice(null); setManualPrice(''); setPriceModal(true); }}
+                        >
+                            <Ionicons name="wallet-outline" size={20} color="#22C55E" />
                         </TouchableOpacity>
                         <TouchableOpacity style={styles.floatingBtn} onPress={handleDelete} disabled={isRefreshing}>
                             <Ionicons name="trash-outline" size={20} color="#EF4444" />
@@ -475,6 +504,116 @@ export default function SeriesDetailScreen() {
                                 <Text style={styles.deleteConfirmText}>Delete</Text>
                             </TouchableOpacity>
                         </View>
+                    </View>
+                </View>
+            </Modal>
+
+            {/* Price Modal — bottom sheet */}
+            <Modal
+                visible={priceModal}
+                animationType="slide"
+                transparent={true}
+                onRequestClose={() => setPriceModal(false)}
+            >
+                <View style={styles.priceSheetOverlay}>
+                    <Pressable style={StyleSheet.absoluteFill} onPress={() => setPriceModal(false)} />
+                    <View style={styles.priceSheet}>
+                        {/* Handle */}
+                        <View style={styles.priceSheetHandle} />
+
+                        {/* Header */}
+                        <View style={styles.priceSheetHeader}>
+                            <View style={styles.priceSheetIconWrap}>
+                                <Ionicons name="pricetag" size={20} color="#22C55E" />
+                            </View>
+                            <View style={{ flex: 1 }}>
+                                <Text style={styles.priceSheetTitle}>Price per volume</Text>
+                                <Text style={styles.priceSheetSub} numberOfLines={1}>{series?.title}</Text>
+                            </View>
+                            <TouchableOpacity onPress={() => setPriceModal(false)} style={styles.priceSheetClose}>
+                                <Ionicons name="close" size={20} color="#555" />
+                            </TouchableOpacity>
+                        </View>
+
+                        {/* Divider */}
+                        <View style={styles.priceSheetDivider} />
+
+                        {/* Suggested price section */}
+                        <Text style={styles.priceSectionLabel}>SUGGESTED PRICE (PHYSICAL EDITION)</Text>
+
+                        <TouchableOpacity
+                            style={styles.fetchPriceBtn}
+                            onPress={handleFetchPrice}
+                            disabled={fetchingPrice}
+                            activeOpacity={0.75}
+                        >
+                            <LinearGradient
+                                colors={['rgba(34,197,94,0.15)', 'rgba(34,197,94,0.05)']}
+                                style={styles.fetchPriceBtnInner}
+                                start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}
+                            >
+                                {fetchingPrice
+                                    ? <ActivityIndicator size="small" color="#22C55E" />
+                                    : <Ionicons name="search-outline" size={18} color="#22C55E" />
+                                }
+                                <Text style={styles.fetchPriceBtnText}>
+                                    {fetchingPrice ? 'Searching Google Books...' : 'Search on Google Books'}
+                                </Text>
+                            </LinearGradient>
+                        </TouchableOpacity>
+
+                        {suggestedPrice !== null && (
+                            <TouchableOpacity
+                                style={styles.priceChip}
+                                onPress={() => setManualPrice(suggestedPrice.toFixed(2))}
+                                activeOpacity={0.75}
+                            >
+                                <View style={styles.priceChipLeft}>
+                                    <Ionicons name="book-outline" size={16} color="#22C55E" />
+                                    <Text style={styles.priceChipSource}>Google Books</Text>
+                                </View>
+                                <View style={styles.priceChipRight}>
+                                    <Text style={styles.priceChipValue}>€{suggestedPrice.toFixed(2)}</Text>
+                                    <Text style={styles.priceChipHint}>Tap to use</Text>
+                                </View>
+                            </TouchableOpacity>
+                        )}
+
+                        {suggestedPrice === null && !fetchingPrice && (
+                            <View style={styles.priceNoResult}>
+                                <Ionicons name="information-circle-outline" size={15} color="#444" />
+                                <Text style={styles.priceNoResultText}>No physical edition found — enter price manually</Text>
+                            </View>
+                        )}
+
+                        {/* Manual input section */}
+                        <Text style={[styles.priceSectionLabel, { marginTop: 20 }]}>MANUAL PRICE</Text>
+
+                        <View style={styles.priceInputBox}>
+                            <Text style={styles.priceInputSymbol}>€</Text>
+                            <TextInput
+                                style={styles.priceInputField}
+                                value={manualPrice}
+                                onChangeText={setManualPrice}
+                                placeholder="0.00"
+                                placeholderTextColor="#444"
+                                keyboardType="decimal-pad"
+                                cursorColor="#22C55E"
+                                selectionColor="#22C55E40"
+                            />
+                        </View>
+
+                        {/* Apply button */}
+                        <TouchableOpacity style={styles.priceApplyBtn} onPress={handleApplyPrice} activeOpacity={0.8}>
+                            <LinearGradient
+                                colors={['#22C55E', '#16A34A']}
+                                style={styles.priceApplyGrad}
+                                start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}
+                            >
+                                <Ionicons name="checkmark-circle-outline" size={18} color="#fff" />
+                                <Text style={styles.priceApplyText}>Apply to all volumes</Text>
+                            </LinearGradient>
+                        </TouchableOpacity>
                     </View>
                 </View>
             </Modal>
@@ -824,6 +963,177 @@ const styles = StyleSheet.create({
         fontWeight: '600',
         fontSize: 16,
         textAlign: 'center',
+    },
+    // Price bottom sheet
+    priceSheetOverlay: {
+        flex: 1,
+        justifyContent: 'flex-end',
+        backgroundColor: 'rgba(0,0,0,0.6)',
+    },
+    priceSheet: {
+        backgroundColor: '#18181B',
+        borderTopLeftRadius: 28,
+        borderTopRightRadius: 28,
+        paddingHorizontal: 24,
+        paddingBottom: 40,
+        paddingTop: 12,
+        borderTopWidth: 1,
+        borderColor: 'rgba(255,255,255,0.07)',
+    },
+    priceSheetHandle: {
+        width: 40, height: 4,
+        borderRadius: 2,
+        backgroundColor: 'rgba(255,255,255,0.15)',
+        alignSelf: 'center',
+        marginBottom: 20,
+    },
+    priceSheetHeader: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 12,
+        marginBottom: 16,
+    },
+    priceSheetIconWrap: {
+        width: 40, height: 40,
+        borderRadius: 12,
+        backgroundColor: 'rgba(34,197,94,0.12)',
+        borderWidth: 1,
+        borderColor: 'rgba(34,197,94,0.2)',
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    priceSheetTitle: {
+        color: '#fff',
+        fontSize: 16,
+        fontWeight: '700',
+    },
+    priceSheetSub: {
+        color: '#555',
+        fontSize: 12,
+        marginTop: 2,
+    },
+    priceSheetClose: {
+        width: 32, height: 32,
+        borderRadius: 16,
+        backgroundColor: 'rgba(255,255,255,0.05)',
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    priceSheetDivider: {
+        height: 1,
+        backgroundColor: 'rgba(255,255,255,0.06)',
+        marginBottom: 20,
+    },
+    priceSectionLabel: {
+        color: '#444',
+        fontSize: 10,
+        fontWeight: '700',
+        letterSpacing: 1.2,
+        marginBottom: 10,
+    },
+    fetchPriceBtn: {
+        borderRadius: 14,
+        overflow: 'hidden',
+        borderWidth: 1,
+        borderColor: 'rgba(34,197,94,0.2)',
+        marginBottom: 10,
+    },
+    fetchPriceBtnInner: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: 8,
+        paddingVertical: 12,
+        paddingHorizontal: 16,
+    },
+    fetchPriceBtnText: {
+        color: '#22C55E',
+        fontWeight: '600',
+        fontSize: 14,
+    },
+    priceChip: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        backgroundColor: 'rgba(34,197,94,0.08)',
+        borderRadius: 14,
+        borderWidth: 1,
+        borderColor: 'rgba(34,197,94,0.18)',
+        paddingVertical: 12,
+        paddingHorizontal: 16,
+    },
+    priceChipLeft: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 8,
+    },
+    priceChipSource: {
+        color: '#888',
+        fontSize: 13,
+    },
+    priceChipRight: {
+        alignItems: 'flex-end',
+    },
+    priceChipValue: {
+        color: '#22C55E',
+        fontSize: 18,
+        fontWeight: '800',
+    },
+    priceChipHint: {
+        color: '#444',
+        fontSize: 10,
+        marginTop: 1,
+    },
+    priceNoResult: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 6,
+        paddingVertical: 6,
+    },
+    priceNoResultText: {
+        color: '#444',
+        fontSize: 12,
+        flex: 1,
+    },
+    priceInputBox: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: 'rgba(255,255,255,0.05)',
+        borderRadius: 14,
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.09)',
+        paddingHorizontal: 16,
+        height: 52,
+        marginBottom: 20,
+    },
+    priceInputSymbol: {
+        color: '#666',
+        fontSize: 18,
+        fontWeight: '600',
+        marginRight: 8,
+    },
+    priceInputField: {
+        flex: 1,
+        color: '#fff',
+        fontSize: 22,
+        fontWeight: '700',
+        fontFamily: 'SpaceGrotesk_700Bold',
+    },
+    priceApplyBtn: {
+        borderRadius: 14,
+        overflow: 'hidden',
+    },
+    priceApplyGrad: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: 8,
+        paddingVertical: 15,
+    },
+    priceApplyText: {
+        color: '#fff',
+        fontWeight: '700',
+        fontSize: 15,
     },
     // Volume covers styles
     loadingContainer: {
