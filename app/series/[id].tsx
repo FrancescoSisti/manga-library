@@ -305,7 +305,17 @@ export default function SeriesDetailScreen() {
                             onPress={() => handleMarkAll(true)}
                         >
                             <Ionicons name="checkmark-done" size={18} color="#22C55E" />
-                            <Text style={[styles.actionBtnText, { color: '#22C55E' }]}>Mark All</Text>
+                            <Text style={[styles.actionBtnText, { color: '#22C55E' }]}>Own All</Text>
+                        </TouchableOpacity>
+
+                        <TouchableOpacity
+                            style={[styles.actionBtn, { backgroundColor: 'rgba(34, 211, 238, 0.15)', borderColor: Colors.neon.accent }]}
+                            onPress={() => handleMarkAllRead(readCount < ownedCount)}
+                        >
+                            <Ionicons name="eye" size={18} color={Colors.neon.accent} />
+                            <Text style={[styles.actionBtnText, { color: Colors.neon.accent }]}>
+                                {readCount < ownedCount ? 'Read All' : 'Unread All'}
+                            </Text>
                         </TouchableOpacity>
 
                         <TouchableOpacity
@@ -313,7 +323,7 @@ export default function SeriesDetailScreen() {
                             onPress={() => handleMarkAll(false)}
                         >
                             <Ionicons name="close" size={18} color="#EF4444" />
-                            <Text style={[styles.actionBtnText, { color: '#EF4444' }]}>Deselect All</Text>
+                            <Text style={[styles.actionBtnText, { color: '#EF4444' }]}>Clear All</Text>
                         </TouchableOpacity>
                     </View>
 
@@ -670,6 +680,19 @@ const styles = StyleSheet.create({
     progressStatText: {
         color: '#888',
         fontSize: 12,
+    },
+    spendRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 6,
+        marginTop: 14,
+        paddingTop: 14,
+        borderTopWidth: 1,
+        borderTopColor: 'rgba(255,255,255,0.06)',
+    },
+    spendText: {
+        color: '#888',
+        fontSize: 13,
     },
     grid: {
         flexDirection: 'row',

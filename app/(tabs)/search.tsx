@@ -113,7 +113,8 @@ export default function SearchScreen() {
             showToast('Fetching volume info...', 'info');
             const volumes = await getBestVolumeCount(manga.title, manga.volumes);
 
-            await addSeries(manga.title, manga.author, volumes, manga.status, manga.coverUrl, manga.description, manga.tags);
+            const mangadexId = !manga.id.startsWith('anilist-') && !manga.id.startsWith('jikan-') ? manga.id : undefined;
+            await addSeries(manga.title, manga.author, volumes, manga.status, manga.coverUrl, manga.description, manga.tags, mangadexId);
             showToast(`${manga.title} added to library!`, 'success');
             if (closeAfter) closeModal();
         } catch (error) {
